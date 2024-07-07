@@ -4,6 +4,8 @@
 [![License](https://img.shields.io/github/license/diffstorm/processWatchdog)](https://github.com/diffstorm/processWatchdog/blob/main/LICENSE)
 [![Language](https://img.shields.io/github/languages/top/diffstorm/processWatchdog)](https://github.com/diffstorm/processWatchdog)
 
+_It will start, monitor and restart applications if they crash or stop sending heartbeat._
+
 The Process Watchdog is a Linux-based utility designed to start, monitor and manage processes specified in a configuration file. It ensures the continuous operation of these processes by periodically checking their status and restarting them if necessary.
 
 ## Overview
@@ -64,7 +66,7 @@ nWdtApps = 4
 - `cmd` : Command to start the application.
 
 ## Example Heartbeat Message Code
-The managed processes must send a message containing their PID over UDP. Below are example heartbeat message codes in various languages.
+The managed processes must send a message containing their PID with prefix `p` (Ex: `p12345`) over UDP. Below are example heartbeat message codes in various languages.
 
 ### Java
 ```java
@@ -75,14 +77,14 @@ import java.net.InetAddress;
 
 public class ProcessHeartbeat {
     public static void sendPIDOverUDP(int port) {
-        try {
-            String host = "127.0.0.255";
-            String pid = "p" + Long.toString(ProcessHandle.current().pid());
+        try (DatagramSocket socket = new DatagramSocket()) {
+            socket.setBroadcast(true);
+            
+            String pid = "p" + ProcessHandle.current().pid();
             byte[] data = pid.getBytes();
-            DatagramSocket socket = new DatagramSocket();
-            DatagramPacket packet = new DatagramPacket(data, data.length, InetAddress.getByName(host), port);
-            socket.send(packet);
-            socket.close();
+            
+            DatagramPacket packet = new DatagramPacket(data, data.length, InetAddress.getByName("127.0.0.255"), port);
+            socket.send(packet);            
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -97,36 +99,37 @@ public class ProcessHeartbeat {
 ```c
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
-#include <arpa/inet.h>
-#include <sys/types.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 
 void sendPIDOverUDP(int port) {
     int sockfd;
-    struct sockaddr_in servaddr;
-    char buffer[1024];
-    snprintf(buffer, sizeof(buffer), "p%d", getpid());
-
-    // Creating socket file descriptor
-    if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+    struct sockaddr_in addr;
+    socklen_t addr_len = sizeof(addr);
+    
+    // Get the current process ID
+    pid_t pid = getpid();
+    char pid_str[20];
+    sprintf(pid_str, "p%d", pid);
+    
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sockfd < 0) {
         perror("socket creation failed");
         exit(EXIT_FAILURE);
     }
-
-    memset(&servaddr, 0, sizeof(servaddr));
-
-    // Filling server information
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_port = htons(port);
-    servaddr.sin_addr.s_addr = INADDR_BROADCAST;
-
-    // Send the PID message
-    if (sendto(sockfd, buffer, strlen(buffer), 0, (const struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
+    
+    memset(&addr, 0, addr_len);
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = inet_addr("127.0.0.255");
+    
+    if (sendto(sockfd, pid_str, strlen(pid_str), 0, (struct sockaddr *)&addr, addr_len) < 0) {
         perror("sendto failed");
     }
-
+    
     close(sockfd);
 }
 ```
@@ -137,36 +140,39 @@ void sendPIDOverUDP(int port) {
 ### C++
 ```cpp
 #include <iostream>
-#include <unistd.h>
 #include <string>
 #include <cstring>
-#include <arpa/inet.h>
-#include <sys/types.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <cstdlib>
 
 void sendPIDOverUDP(int port) {
     int sockfd;
-    struct sockaddr_in servaddr;
-    std::string pid_message = "p" + std::to_string(getpid());
-
-    // Creating socket file descriptor
-    if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+    struct sockaddr_in addr;
+    socklen_t addr_len = sizeof(addr);
+    
+    // Get the current process ID
+    pid_t pid = getpid();
+    std::string pid_str = "p" + std::to_string(pid);
+    const char* pid_data = pid_str.c_str();
+    
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sockfd < 0) {
         perror("socket creation failed");
         exit(EXIT_FAILURE);
     }
-
-    memset(&servaddr, 0, sizeof(servaddr));
-
-    // Filling server information
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_port = htons(port);
-    servaddr.sin_addr.s_addr = INADDR_BROADCAST;
-
-    // Send the PID message
-    if (sendto(sockfd, pid_message.c_str(), pid_message.length(), 0, (const struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
+    
+    memset(&addr, 0, addr_len);
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = inet_addr("127.0.0.255");
+    
+    if (sendto(sockfd, pid_data, strlen(pid_data), 0, (struct sockaddr *)&addr, addr_len) < 0) {
         perror("sendto failed");
     }
-
+    
     close(sockfd);
 }
 ```
@@ -176,16 +182,24 @@ void sendPIDOverUDP(int port) {
 
 ### Qt (C++)
 ```cpp
-#include <QUdpSocket>
 #include <QCoreApplication>
+#include <QUdpSocket>
+#include <QHostAddress>
+#include <QByteArray>
 #include <QProcess>
 
-void sendPIDOverUDP(int port) {
-    QUdpSocket udpSocket;
-    QString message = "p" + QString::number(QCoreApplication::applicationPid());
-    QByteArray data = message.toUtf8();
+void sendPIDOverUDP(int port)
+{
+    QString host = "127.0.0.255";
+    QString pid = "p" + QString::number(QCoreApplication::applicationPid());
+    QByteArray data = pid.toUtf8();
 
-    udpSocket.writeDatagram(data, QHostAddress::Broadcast, port);
+    QUdpSocket socket;
+    socket.bind(QHostAddress::AnyIPv4, port, QUdpSocket::ShareAddress);
+
+    socket.writeDatagram(data, QHostAddress(host), port);
+
+    socket.close();
 }
 ```
 </details>
@@ -197,26 +211,27 @@ void sendPIDOverUDP(int port) {
 using System;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
-using System.Diagnostics;
 
 public class Program
 {
     public static void SendPIDOverUDP(int port)
     {
-        UdpClient udpClient = new UdpClient();
-        int pid = Process.GetCurrentProcess().Id;
-        string message = "p" + pid.ToString();
-        byte[] data = Encoding.UTF8.GetBytes(message);
+        try
+        {
+            string host = "127.0.0.255";
+            string pid = "p" + System.Diagnostics.Process.GetCurrentProcess().Id.ToString();
+            byte[] data = System.Text.Encoding.ASCII.GetBytes(pid);
 
-        IPEndPoint endPoint = new IPEndPoint(IPAddress.Broadcast, port);
-        udpClient.Send(data, data.Length, endPoint);
-        udpClient.Close();
-    }
-
-    public static void Main()
-    {
-        SendPIDOverUDP(12345);
+            using (UdpClient client = new UdpClient())
+            {
+                client.EnableBroadcast = true;
+                client.Send(data, data.Length, new IPEndPoint(IPAddress.Parse(host), port));
+            }
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine("Exception: " + e.Message);
+        }
     }
 }
 ```
@@ -226,13 +241,22 @@ public class Program
 
 ### Python
 ```python
-import os
 import socket
+import os
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-pid = str(os.getpid())
-data = 'p' + pid
-sock.sendto(data.encode('utf-8'), ('localhost', 12345))
+def send_pid_over_udp(port):
+    try:
+        host = '127.0.0.255'
+        pid = f"p{os.getpid()}"
+        data = pid.encode()
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.sendto(data, (host, port))
+        sock.close()
+        
+    except Exception as e:
+        print(f"Exception: {e}")
 ```
 </details>
 <details>
@@ -242,13 +266,13 @@ sock.sendto(data.encode('utf-8'), ('localhost', 12345))
 ```bash
 #!/bin/bash
 
-sendPIDOverUDP() {
+send_pid_over_udp() {
     local port=$1
-    local pid="p$$"
-    echo -n $pid | nc -u -w1 -b 127.0.0.1 $port
-}
+    local host="127.0.0.255"
+    local pid="p$$"  # $$ gives the PID of the current shell process
 
-sendPIDOverUDP 12345
+    echo -n "$pid" | socat - UDP-DATAGRAM:$host:$port,broadcast
+}
 ```
 </details>
 
@@ -311,12 +335,16 @@ Or just `./run.sh &` which is recommended.
 
 ## TODO
 - Redesign the apps.c
-- Replace ini with json file
 - Add CPU & RAM usage to the statistics
-- Add Telnet console
-- Enable remote syslog server reporting
+- Create easy-to-use heartbeat libraries
 - Enable commands over UDP
+- Enable remote syslog server reporting
+- Add periodic reboot feature
 - Add IPC and TCP support
+- Add json support
+- Add remote Telnet console
+- Add config wizard
+- Add multiplatform GUI
 
 ## :snowman: Author
 Eray Öztürk ([@diffstorm](https://github.com/diffstorm))
