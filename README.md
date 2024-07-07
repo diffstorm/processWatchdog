@@ -1,4 +1,9 @@
 # Process Watchdog
+
+[![Build Status](https://github.com/diffstorm/processWatchdog/actions/workflows/c-cpp.yml/badge.svg)](https://github.com/diffstorm/processWatchdog/actions)
+[![License](https://img.shields.io/github/license/diffstorm/processWatchdog)](https://github.com/diffstorm/processWatchdog/blob/main/LICENSE)
+[![Language](https://img.shields.io/github/languages/top/diffstorm/processWatchdog)](https://github.com/diffstorm/processWatchdog)
+
 The Process Watchdog is a Linux-based utility designed to start, monitor and manage processes specified in a configuration file. It ensures the continuous operation of these processes by periodically checking their status and restarting them if necessary.
 
 ## Overview
@@ -83,6 +88,7 @@ public class ProcessHeartbeat {
         }
     }
 }
+```
 
 <details>
   <summary>Click for other examples in C, C++, Qt, C#, Python and Shell Script</summary>
