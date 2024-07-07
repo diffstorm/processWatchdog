@@ -57,11 +57,11 @@ nWdtApps = 4
 ```
 
 ### Fields
-`name` : Name of the application.
-`start_delay` : Delay in seconds before starting the application.
-`ping_delay` : Time in seconds to wait before expecting a ping from the application.
-`ping_interval` : Maximum time period in seconds between pings.
-`cmd` : Command to start the application.
+- `name` : Name of the application.
+- `start_delay` : Delay in seconds before starting the application.
+- `ping_delay` : Time in seconds to wait before expecting a ping from the application.
+- `ping_interval` : Maximum time period in seconds between pings.
+- `cmd` : Command to start the application.
 
 ## Example Heartbeat Message Code
 The managed processes must send a message containing their PID over UDP. Below are example heartbeat message codes in various languages.
@@ -91,7 +91,7 @@ public class ProcessHeartbeat {
 ```
 
 <details>
-  <summary>Click for other examples in C, C++, Qt, C#, Python and Shell Script</summary>
+  <summary>Click for example in C</summary>
 
 ### C
 ```c
@@ -130,7 +130,10 @@ void sendPIDOverUDP(int port) {
     close(sockfd);
 }
 ```
-  
+</details>
+<details>
+  <summary>Click for example in C++</summary>
+
 ### C++
 ```cpp
 #include <iostream>
@@ -167,6 +170,9 @@ void sendPIDOverUDP(int port) {
     close(sockfd);
 }
 ```
+</details>
+<details>
+  <summary>Click for example in Qt</summary>
 
 ### Qt (C++)
 ```cpp
@@ -182,6 +188,9 @@ void sendPIDOverUDP(int port) {
     udpSocket.writeDatagram(data, QHostAddress::Broadcast, port);
 }
 ```
+</details>
+<details>
+  <summary>Click for example in C#</summary>
 
 ### C#
 ```csharp
@@ -211,6 +220,9 @@ public class Program
     }
 }
 ```
+</details>
+<details>
+  <summary>Click for example in Python</summary>
 
 ### Python
 ```python
@@ -222,6 +234,9 @@ pid = str(os.getpid())
 data = 'p' + pid
 sock.sendto(data.encode('utf-8'), ('localhost', 12345))
 ```
+</details>
+<details>
+  <summary>Click for example in Shell Script</summary>
 
 ### Shell Script
 ```bash
@@ -235,7 +250,6 @@ sendPIDOverUDP() {
 
 sendPIDOverUDP 12345
 ```
-
 </details>
 
 ## Statistics Logging
