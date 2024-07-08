@@ -9,24 +9,25 @@ _It will start, monitor and restart applications if they crash or stop sending h
 The Process Watchdog is a Linux-based utility designed to start, monitor and manage processes specified in a configuration file. It ensures the continuous operation of these processes by periodically checking their status and restarting them if necessary.
 
 ## Overview
-This application acts as a vigilant guardian for your critical processes, ensuring they remain operational at all times. It accomplishes this task by regularly monitoring the specified processes and taking appropriate actions if any anomalies are detected. The primary function of this application is to ensure that the managed processes remain active, restarting them if they crash or stop sending heartbeat signals over UDP.
+This application acts as a vigilant guardian for your critical processes, ensuring they remain operational at all times. It accomplishes this task by regularly monitoring the specified processes and taking appropriate actions if any anomalies are detected. The primary function of this application is to ensure that the managed processes remain active, restarting them if they crash or stop sending heartbeat messages.
 
-This application is particularly useful in environments where multiple processes need to be constantly running, such as server systems or embedded devices. It operates based on the principle that each monitored process should periodically send its process ID (PID) over UDP. If a process fails to send its PID within the specified time interval, the watchdog manager assumes the process has crashed and automatically restarts it.
+This application is particularly useful in environments where multiple processes need to be constantly running, such as server systems, clouds or embedded devices. It operates based on the principle that each monitored process should periodically send heartbeat messages. If a process fails to send a heartbeat within the specified time interval, the watchdog manager assumes the process has halted/hang and automatically restarts it.
 
 ## Features
 - Starts and monitors specified processes listed in a configuration file.
-- Restarts processes that have crashed or stopped sending their PID.
+- Restarts processes that have crashed or stopped sending their heartbeat.
 - Listens to a specified UDP port for heartbeat messages containing process IDs (PIDs).
 - Provides a centralized platform for managing multiple processes, enhancing operational efficiency.
 - Provides file command interface to manually start, stop, or restart individual processes or the entire watchdog system or even a Linux reboot.
 - Generates statistics log files to track the status and history of each managed process.
 
 ## Requirements
-- Processes managed by Process Watchdog must periodically send their PID over UDP to prevent being restarted.
+- Processes managed by Process Watchdog must periodically send their heartbeat messages to prevent being restarted.
 - Configuration file `config.ini` in the same directory with details about the processes to be managed and the UDP port for communication.
 
 ## Configuration File : `config.ini`
 An example configuration file looks like this:
+Note that ping means heartbeat.
 
 ```ini
 [processWatchdog]
@@ -65,8 +66,10 @@ nWdtApps = 4
 - `ping_interval` : Maximum time period in seconds between pings.
 - `cmd` : Command to start the application.
 
-## Example Heartbeat Message Code
-The managed processes must send a message containing their PID with prefix `p` (Ex: `p12345`) over UDP. Below are example heartbeat message codes in various languages.
+## Heartbeat Message
+A heartbeat message is a UDP message containing the managed process's process IDs (PID) with the prefix p (e.g., p12345). This message is periodically sent to the specified UDP port.
+
+Below are example heartbeat message codes in various languages:
 
 ### Java
 ```java
@@ -334,6 +337,7 @@ Use the provided `run.sh` script to start the Process Watchdog application. This
 Or just `./run.sh &` which is recommended.
 
 ## TODO
+- Replace ping with heartbeat in the code and .ini
 - Redesign the apps.c
 - Add CPU & RAM usage to the statistics
 - Create easy-to-use heartbeat libraries
