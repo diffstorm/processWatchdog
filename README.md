@@ -67,7 +67,7 @@ nWdtApps = 4
 - `cmd` : Command to start the application.
 
 ## Heartbeat Message
-A heartbeat message is a UDP message containing the managed process's process IDs (PID) with the prefix p (e.g., p12345). This message is periodically sent to the specified UDP port.
+A heartbeat message is a UDP packet with the process ID (PID) prefixed by p (e.g., p12345 for PID 12345). It is sent periodically by every managed process to a specified UDP port.
 
 Below are example heartbeat message codes in various languages:
 
