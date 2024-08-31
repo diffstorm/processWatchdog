@@ -59,6 +59,8 @@ nWdtApps = 4
 ```
 
 ### Fields
+- `udp_port` : The UDP port to expect heartbeats.
+- `nWdtApps` : Number of applications to manage (4 in the example).
 - `name` : Name of the application.
 - `start_delay` : Delay in seconds before starting the application.
 - `heartbeat_delay` : Time in seconds to wait before expecting a heartbeat from the application.
