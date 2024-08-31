@@ -9,7 +9,7 @@
 
     The application ensures high reliability and availability by continuously monitoring and
     restarting processes as necessary. It also logs various statistics about the monitored
-    processes, including start times, crash times, and ping intervals.
+    processes, including start times, crash times, and heartbeat intervals.
 
     @date 2023-01-01
     @version 1.0
@@ -40,10 +40,10 @@ void parse_commands(char *data, int length)
 {
     switch(data[0])
     {
-        case 'p': // ping : p<pid> ? p1234
+        case 'p': // pid heartbeat : p<pid> ? p1234
         {
             int n = parse_number(data, length, NULL);
-            LOGD("Ping command received from pid %d : %s", n, data);
+            LOGD("Heartbeat command received from pid %d : %s", n, data);
 
             if(0 < n && INT32_MAX > n)
             {
@@ -51,24 +51,24 @@ void parse_commands(char *data, int length)
 
                 if(i >= 0)
                 {
-                    time_t t = get_ping_time(i);
+                    time_t t = get_heartbeat_time(i);
 
-                    if(get_first_ping(i))
+                    if(get_first_heartbeat(i))
                     {
                         if(t >= 0)
                         {
-                            LOGD("%s ping after %d seconds", get_app_name(i), t);
-                            stats_update_ping_time(i, t);
+                            LOGD("%s heartbeat after %d seconds", get_app_name(i), t);
+                            stats_update_heartbeat_time(i, t);
                         }
                     }
                     else
                     {
-                        LOGD("%s first ping after %d seconds", get_app_name(i), t);
-                        stats_update_first_ping_time(i, t);
-                        set_first_ping(i);
+                        LOGD("%s first heartbeat after %d seconds", get_app_name(i), t);
+                        stats_update_first_heartbeat_time(i, t);
+                        set_first_heartbeat(i);
                     }
 
-                    update_ping_time(i);
+                    update_heartbeat_time(i);
                 }
             }
             else
@@ -151,7 +151,7 @@ extern char *optarg;
 extern int opterr, optind;
 
 #define APPNAME     basename(argv[0])
-#define VERSION     "1.0.0"
+#define VERSION     "1.1.0"
 #define OPTSTR      "i:v:t:h"
 #define USAGE_FMT   "%s -i <file.ini> [-v] [-h] [-t testname]\n"
 
@@ -232,24 +232,24 @@ void help(char *progname)
             "nWdtApps = 4\n"
             "1_name = App1\n"
             "1_start_delay = 10\n"
-            "1_ping_delay = 60\n"
-            "1_ping_interval = 20\n"
+            "1_heartbeat_delay = 60\n"
+            "1_heartbeat_interval = 20\n"
             "1_cmd = /usr/bin/python test_child.py 1 crash\n"
             "2_name = App2\n"
             "2_start_delay = 20\n"
-            "2_ping_delay = 90\n"
-            "2_ping_interval = 30\n"
-            "2_cmd = /usr/bin/python test_child.py 2 noping\n"
+            "2_heartbeat_delay = 90\n"
+            "2_heartbeat_interval = 30\n"
+            "2_cmd = /usr/bin/python test_child.py 2 noheartbeat\n"
             "3_name = App3\n"
             "3_start_delay = 35\n"
-            "3_ping_delay = 70\n"
-            "3_ping_interval = 16\n"
+            "3_heartbeat_delay = 70\n"
+            "3_heartbeat_interval = 16\n"
             "3_cmd = /usr/bin/python test_child.py 3 crash\n"
             "4_start_delay = 35\n"
             "4_name = App4\n"
-            "4_ping_delay = 130\n"
-            "4_ping_interval = 13\n"
-            "4_cmd = /usr/bin/python test_child.py 4 noping\n");
+            "4_heartbeat_delay = 130\n"
+            "4_heartbeat_interval = 13\n"
+            "4_cmd = /usr/bin/python test_child.py 4 noheartbeat\n");
 }
 
 void version(char *progname)
@@ -373,8 +373,8 @@ int main(int argc, char *argv[])
                 }
                 else if(is_timeup(i))
                 {
-                    LOGE("Process %s has not sent a ping in time, restarting", get_app_name(i));
-                    stats_ping_reset_at(i);
+                    LOGE("Process %s has not sent a heartbeat in time, restarting", get_app_name(i));
+                    stats_heartbeat_reset_at(i);
                     restart_application(i);
                 }
                 else if(filecmd_stop(i))

@@ -27,7 +27,6 @@ This application is particularly useful in environments where multiple processes
 
 ## Configuration File : `config.ini`
 An example configuration file looks like this:
-Note that ping means heartbeat.
 
 ```ini
 [processWatchdog]
@@ -36,34 +35,34 @@ nWdtApps = 4
 
 1_name = Communicator
 1_start_delay = 10
-1_ping_delay = 60
-1_ping_interval = 20
+1_heartbeat_delay = 60
+1_heartbeat_interval = 20
 1_cmd = /usr/bin/python test_child.py 1 crash
 
 2_name = Bot
 2_start_delay = 20
-2_ping_delay = 90
-2_ping_interval = 30
-2_cmd = /usr/bin/python test_child.py 2 noping
+2_heartbeat_delay = 90
+2_heartbeat_interval = 30
+2_cmd = /usr/bin/python test_child.py 2 noheartbeat
 
 3_name = Publisher
 3_start_delay = 35
-3_ping_delay = 70
-3_ping_interval = 16
+3_heartbeat_delay = 70
+3_heartbeat_interval = 16
 3_cmd = /usr/bin/python test_child.py 3 crash
 
 4_name = Alert
 4_start_delay = 35
-4_ping_delay = 130
-4_ping_interval = 13
-4_cmd = /usr/bin/python test_child.py 4 noping
+4_heartbeat_delay = 130
+4_heartbeat_interval = 13
+4_cmd = /usr/bin/python test_child.py 4 noheartbeat
 ```
 
 ### Fields
 - `name` : Name of the application.
 - `start_delay` : Delay in seconds before starting the application.
-- `ping_delay` : Time in seconds to wait before expecting a ping from the application.
-- `ping_interval` : Maximum time period in seconds between pings.
+- `heartbeat_delay` : Time in seconds to wait before expecting a heartbeat from the application.
+- `heartbeat_interval` : Maximum time period in seconds between heartbeats.
 - `cmd` : Command to start the application.
 
 ## Heartbeat Message
@@ -286,18 +285,18 @@ The application generates log files to monitor the status of each managed proces
 Statistics for App 2 Publisher:
 Started at: 2024-06-07 20:17:10
 Crashed at: Never
-Ping reset at: Never
+Heartbeat reset at: Never
 Start count: 7
 Crash count: 0
-Ping reset count: 0
-Ping count: 11937
-Ping count old: 15455
-Average first ping time: 105 seconds
-Maximum first ping time: 107 seconds
-Minimum first ping time: 104 seconds
-Average ping time: 102 seconds
-Maximum ping time: 110 seconds
-Minimum ping time: 102 seconds
+Heartbeat reset count: 0
+Heartbeat count: 11937
+Heartbeat count old: 15455
+Average first heartbeat time: 105 seconds
+Maximum first heartbeat time: 107 seconds
+Minimum first heartbeat time: 104 seconds
+Average heartbeat time: 102 seconds
+Maximum heartbeat time: 110 seconds
+Minimum heartbeat time: 102 seconds
 Magic: A50FAA55
 ```
 
@@ -337,7 +336,6 @@ Use the provided `run.sh` script to start the Process Watchdog application. This
 Or just `./run.sh &` which is recommended.
 
 ## TODO
-- Replace ping with heartbeat in the code and .ini
 - Redesign the apps.c
 - Add CPU & RAM usage to the statistics
 - Create easy-to-use heartbeat libraries

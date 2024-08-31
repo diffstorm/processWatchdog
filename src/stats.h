@@ -9,7 +9,7 @@
 
     The application ensures high reliability and availability by continuously monitoring and
     restarting processes as necessary. It also logs various statistics about the monitored
-    processes, including start times, crash times, and ping intervals.
+    processes, including start times, crash times, and heartbeat intervals.
 
     @date 2023-01-01
     @version 1.0
@@ -45,27 +45,27 @@ void stats_started_at(int index);
 void stats_crashed_at(int index);
 
 /**
-    @brief Updates the statistics for when the application was restarted due to late pings.
+    @brief Updates the statistics for when the application was restarted due to late heartbeats.
 
     @param index Index of the application.
 */
-void stats_ping_reset_at(int index);
+void stats_heartbeat_reset_at(int index);
 
 /**
-    @brief Updates the statistics for the ping time of the application.
+    @brief Updates the statistics for the heartbeat time of the application.
 
     @param index Index of the application.
-    @param pingTime Time in seconds for the ping.
+    @param heartbeatTime Time in seconds for the heartbeat.
 */
-void stats_update_ping_time(int index, time_t pingTime);
+void stats_update_heartbeat_time(int index, time_t heartbeatTime);
 
 /**
-    @brief Updates the statistics for the first ping time of the application.
+    @brief Updates the statistics for the first heartbeat time of the application.
 
     @param index Index of the application.
-    @param pingTime Time in seconds for the first ping.
+    @param heartbeatTime Time in seconds for the first heartbeat.
 */
-void stats_update_first_ping_time(int index, time_t pingTime);
+void stats_update_first_heartbeat_time(int index, time_t heartbeatTime);
 
 // File operations functions
 

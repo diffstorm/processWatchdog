@@ -9,7 +9,7 @@
 
     The application ensures high reliability and availability by continuously monitoring and
     restarting processes as necessary. It also logs various statistics about the monitored
-    processes, including start times, crash times, and ping intervals.
+    processes, including start times, crash times, and heartbeat intervals.
 
     @date 2023-01-01
     @version 1.0
@@ -47,15 +47,15 @@ typedef struct
 {
     // In the ini file
     int start_delay; /**< Delay in seconds before starting the application. */
-    int ping_delay; /**< Time in seconds to wait before expecting a ping from the application. */
-    int ping_interval; /**< Maximum time period in seconds between pings. */
+    int heartbeat_delay; /**< Time in seconds to wait before expecting a heartbeat from the application. */
+    int heartbeat_interval; /**< Maximum time period in seconds between heartbeats. */
     char name[MAX_APP_NAME_LENGTH]; /**< Name of the application. */
     char cmd[MAX_APP_CMD_LENGTH]; /**< Command to start the application. */
     // Not in the ini file
     bool started; /**< Flag indicating whether the application has been started. */
-    bool first_ping; /**< Flag indicating whether the application has sent its first ping. */
+    bool first_heartbeat; /**< Flag indicating whether the application has sent its first heartbeat. */
     int pid; /**< Process ID of the application. */
-    time_t last_ping; /**< Time when the last ping was received from the application. */
+    time_t last_heartbeat; /**< Time when the last heartbeat was received from the application. */
 } Application_t;
 
 static Application_t apps[MAX_APPS]; /**< Array of Application_t structures representing applications defined in the ini file. */
@@ -71,23 +71,23 @@ static int ini_index; /**< Index used to read an array in the ini file. */
 void print_app(int i)
 {
     LOGN("## Application info [%d]", i);
-    LOGN("%d- name         : %s", i, apps[i].name);
-    LOGN("%d- start_delay  : %d", i, apps[i].start_delay);
-    LOGN("%d- ping_delay   : %d", i, apps[i].ping_delay);
-    LOGN("%d- ping_interval: %d", i, apps[i].ping_interval);
-    LOGN("%d- cmd          : %s", i, apps[i].cmd);
-    LOGN("%d- started      : %d", i, apps[i].started);
-    LOGN("%d- first_ping   : %d", i, apps[i].first_ping);
-    LOGN("%d- pid          : %d", i, apps[i].pid);
-    LOGN("%d- last_ping    : %d", i, apps[i].last_ping);
+    LOGN("%d- name              : %s", i, apps[i].name);
+    LOGN("%d- start_delay       : %d", i, apps[i].start_delay);
+    LOGN("%d- heartbeat_delay   : %d", i, apps[i].heartbeat_delay);
+    LOGN("%d- heartbeat_interval: %d", i, apps[i].heartbeat_interval);
+    LOGN("%d- cmd               : %s", i, apps[i].cmd);
+    LOGN("%d- started           : %d", i, apps[i].started);
+    LOGN("%d- first_heartbeat   : %d", i, apps[i].first_heartbeat);
+    LOGN("%d- pid               : %d", i, apps[i].pid);
+    LOGN("%d- last_heartbeat    : %d", i, apps[i].last_heartbeat);
 }
 
 //------------------------------------------------------------------
 
-void update_ping_time(int i)
+void update_heartbeat_time(int i)
 {
-    apps[i].last_ping = time(NULL);
-    LOGD("Ping time updated for %s", apps[i].name);
+    apps[i].last_heartbeat = time(NULL);
+    LOGD("Heartbeat time updated for %s", apps[i].name);
 }
 
 int find_pid(int pid)
@@ -103,10 +103,10 @@ int find_pid(int pid)
     return -1;
 }
 
-time_t get_ping_time(int i)
+time_t get_heartbeat_time(int i)
 {
     time_t t = time(NULL);
-    return t - apps[i].last_ping;
+    return t - apps[i].last_heartbeat;
 }
 
 bool is_timeup(int i)
@@ -114,28 +114,28 @@ bool is_timeup(int i)
     bool ret = false;
     time_t t = time(NULL);
 
-    if(t < apps[i].last_ping)
+    if(t < apps[i].last_heartbeat)
     {
-        update_ping_time(i);
+        update_heartbeat_time(i);
     }
 
-    if(t - apps[i].last_ping >= (apps[i].first_ping ? apps[i].ping_interval : apps[i].ping_delay))
+    if(t - apps[i].last_heartbeat >= (apps[i].first_heartbeat ? apps[i].heartbeat_interval : apps[i].heartbeat_delay))
     {
         ret = true;
-        LOGD("Ping time up for %s", apps[i].name);
+        LOGD("Heartbeat time up for %s", apps[i].name);
     }
 
     return ret;
 }
 
-void set_first_ping(int i)
+void set_first_heartbeat(int i)
 {
-    apps[i].first_ping = true;
+    apps[i].first_heartbeat = true;
 }
 
-bool get_first_ping(int i)
+bool get_first_heartbeat(int i)
 {
-    return apps[i].first_ping;
+    return apps[i].first_heartbeat;
 }
 
 //------------------------------------------------------------------
@@ -218,18 +218,18 @@ static int handler(void *user, const char *section, const char *name, const char
             apps[ini_index].start_delay = atoi(value);
         }
 
-        SECTION(ini_index, "ping_delay");
+        SECTION(ini_index, "heartbeat_delay");
 
         if(MATCH(_section, b))
         {
-            apps[ini_index].ping_delay = atoi(value);
+            apps[ini_index].heartbeat_delay = atoi(value);
         }
 
-        SECTION(ini_index, "ping_interval");
+        SECTION(ini_index, "heartbeat_interval");
 
         if(MATCH(_section, b))
         {
-            apps[ini_index].ping_interval = atoi(value);
+            apps[ini_index].heartbeat_interval = atoi(value);
         }
 
         SECTION(ini_index, "cmd"); // this always must be the last one
@@ -332,10 +332,10 @@ void start_application(int i)
     {
         // Parent process
         apps[i].started = true;
-        apps[i].first_ping = false;
+        apps[i].first_heartbeat = false;
         apps[i].pid = pid;
         LOGI("Process %s started (PID %d): %s", apps[i].name, apps[i].pid, apps[i].cmd);
-        update_ping_time(i);
+        update_heartbeat_time(i);
     }
 }
 
@@ -426,7 +426,7 @@ void kill_application(int i)
     if(killed)
     {
         apps[i].started = false;
-        apps[i].first_ping = false;
+        apps[i].first_heartbeat = false;
         apps[i].pid = 0;
     }
 }
@@ -454,8 +454,8 @@ void restart_application(int i)
     }
     else
     {
-        // Update the last_ping time to prevent immediate restart
-        update_ping_time(i);
+        // Update the last_heartbeat time to prevent immediate restart
+        update_heartbeat_time(i);
         // Log that the application has been successfully restarted
         LOGI("Process %s restarted successfully", apps[i].name);
     }

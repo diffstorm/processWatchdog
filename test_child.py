@@ -4,7 +4,7 @@
 # Usage:
 # python test_child <index> <role>
 # python test_child 1 crash
-# python test_child 2 noping
+# python test_child 2 noheartbeat
 
 import os
 import socket
@@ -50,11 +50,11 @@ print(f'[{current_time}] {appname}: UDP_PORT set to {UDP_PORT}')
 #start_delay = config.getint('processWatchdog', str(index) + '_start_delay')
 #print(f'[{current_time}] {appname}: Start delay set to {start_delay}')
 
-ping_delay = config.getint('processWatchdog', str(index) + '_ping_delay')
-print(f'[{current_time}] {appname}: Ping delay set to {ping_delay}')
+heartbeat_delay = config.getint('processWatchdog', str(index) + '_heartbeat_delay')
+print(f'[{current_time}] {appname}: Heartbeat delay set to {heartbeat_delay}')
 
-ping_interval = config.getint('processWatchdog', str(index) + '_ping_interval')
-print(f'[{current_time}] {appname}: Ping interval set to {ping_interval}')
+heartbeat_interval = config.getint('processWatchdog', str(index) + '_heartbeat_interval')
+print(f'[{current_time}] {appname}: Heartbeat interval set to {heartbeat_interval}')
 
 name = config.get('processWatchdog', str(index) + '_name')
 print(f'[{current_time}] {appname}: Name set to {name}')
@@ -71,11 +71,11 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 # Get the PID
 pid = str(os.getpid())
 
-# Wait during given ping delay
-ping_delay = int(ping_delay / 2 + 1)
-print(f'[{current_time}] {appname}: Waiting {ping_delay} seconds ping_delay...')
-time.sleep(ping_delay)
-wait_time = ping_delay
+# Wait during given heartbeat delay
+heartbeat_delay = int(heartbeat_delay / 2 + 1)
+print(f'[{current_time}] {appname}: Waiting {heartbeat_delay} seconds heartbeat_delay...')
+time.sleep(heartbeat_delay)
+wait_time = heartbeat_delay
 
 # Set the running time of the program
 start_time = time.time()
@@ -91,10 +91,10 @@ while True:
     current_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
 
     # Print a message to stdout
-    print(f'[{current_time}] {appname}: {name} Ping sent: {data} after {wait_time} seconds', flush=True)
+    print(f'[{current_time}] {appname}: {name} Heartbeat sent: {data} after {wait_time} seconds', flush=True)
 
     # Choose a random waiting time
-    wait_time = random.randint(int(ping_interval / 3), int(ping_interval / 2))
+    wait_time = random.randint(int(heartbeat_interval / 3), int(heartbeat_interval / 2))
 
     # Wait for the random time
     time.sleep(wait_time)
@@ -103,8 +103,8 @@ while True:
     elapsed_time = time.time() - start_time
     if elapsed_time >= 180:
         # Print the final message to stdout
-        if role == "noping":
-            print(f'[{current_time}] {appname}: {name} No more pings', flush=True)
+        if role == "noheartbeat":
+            print(f'[{current_time}] {appname}: {name} No more heartbeats', flush=True)
             time.sleep(9000)
         elif role == "crash":
             print(f'[{current_time}] {appname}: {name} Program stopped', flush=True)

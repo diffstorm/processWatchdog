@@ -9,7 +9,7 @@
 
     The application ensures high reliability and availability by continuously monitoring and
     restarting processes as necessary. It also logs various statistics about the monitored
-    processes, including start times, crash times, and ping intervals.
+    processes, including start times, crash times, and heartbeat intervals.
 
     @date 2023-01-01
     @version 1.0
@@ -46,11 +46,11 @@
 void print_app(int i);
 
 /**
-    @brief Updates the last ping time for the specified application.
+    @brief Updates the last heartbeat time for the specified application.
 
     @param i Index of the application.
 */
-void update_ping_time(int i);
+void update_heartbeat_time(int i);
 
 /**
     @brief Finds the index of an application with the specified process ID.
@@ -61,35 +61,35 @@ void update_ping_time(int i);
 int find_pid(int pid);
 
 /**
-    @brief Gets the elapsed time since the last ping received from the specified application.
+    @brief Gets the elapsed time since the last heartbeat received from the specified application.
 
     @param i Index of the application.
     @return Elapsed time in seconds.
 */
-time_t get_ping_time(int i);
+time_t get_heartbeat_time(int i);
 
 /**
-    @brief Checks if it is time to expect a ping from the specified application.
+    @brief Checks if it is time to expect a heartbeat from the specified application.
 
     @param i Index of the application.
-    @return true if it is time to expect a ping, false otherwise.
+    @return true if it is time to expect a heartbeat, false otherwise.
 */
 bool is_timeup(int i);
 
 /**
-    @brief Sets the flag indicating that the specified application has sent its first ping.
+    @brief Sets the flag indicating that the specified application has sent its first heartbeat.
 
     @param i Index of the application.
 */
-void set_first_ping(int i);
+void set_first_heartbeat(int i);
 
 /**
-    @brief Gets the flag indicating whether the specified application has sent its first ping.
+    @brief Gets the flag indicating whether the specified application has sent its first heartbeat.
 
     @param i Index of the application.
-    @return true if the application has sent its first ping, false otherwise.
+    @return true if the application has sent its first heartbeat, false otherwise.
 */
-bool get_first_ping(int i);
+bool get_first_heartbeat(int i);
 
 /**
     @brief Sets the path to the ini file.

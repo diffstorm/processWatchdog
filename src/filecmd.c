@@ -9,7 +9,7 @@
 
     The application ensures high reliability and availability by continuously monitoring and
     restarting processes as necessary. It also logs various statistics about the monitored
-    processes, including start times, crash times, and ping intervals.
+    processes, including start times, crash times, and heartbeat intervals.
 
     @date 2023-01-01
     @version 1.0

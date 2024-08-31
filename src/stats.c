@@ -9,7 +9,7 @@
 
     The application ensures high reliability and availability by continuously monitoring and
     restarting processes as necessary. It also logs various statistics about the monitored
-    processes, including start times, crash times, and ping intervals.
+    processes, including start times, crash times, and heartbeat intervals.
 
     @date 2023-01-01
     @version 1.0
@@ -35,89 +35,89 @@ typedef struct
 {
     time_t started_at; /**< Time when the application started (epoch). */
     time_t crashed_at; /**< Time when the application crashed (epoch). */
-    time_t ping_reset_at; /**< Time when the application was restarted due to late pings (epoch). */
-    time_t avg_first_ping_time; /**< Average first ping time (seconds). */
-    time_t max_first_ping_time; /**< Maximum first ping time (seconds). */
-    time_t min_first_ping_time; /**< Minimum first ping time (seconds). */
-    time_t avg_ping_time; /**< Average ping time (seconds). */
-    time_t max_ping_time; /**< Maximum ping time (seconds). */
-    time_t min_ping_time; /**< Minimum ping time (seconds). */
+    time_t heartbeat_reset_at; /**< Time when the application was restarted due to late heartbeats (epoch). */
+    time_t avg_first_heartbeat_time; /**< Average first heartbeat time (seconds). */
+    time_t max_first_heartbeat_time; /**< Maximum first heartbeat time (seconds). */
+    time_t min_first_heartbeat_time; /**< Minimum first heartbeat time (seconds). */
+    time_t avg_heartbeat_time; /**< Average heartbeat time (seconds). */
+    time_t max_heartbeat_time; /**< Maximum heartbeat time (seconds). */
+    time_t min_heartbeat_time; /**< Minimum heartbeat time (seconds). */
     size_t start_count; /**< Number of application starts. */
     size_t crash_count; /**< Number of application crashes. */
-    size_t ping_count; /**< Number of pings received. */
-    size_t ping_count_old; /**< Number of old pings received. */
-    size_t ping_reset_count; /**< Number of restarts due to late pings. */
+    size_t heartbeat_count; /**< Number of heartbeats received. */
+    size_t heartbeat_count_old; /**< Number of old heartbeats received. */
+    size_t heartbeat_reset_count; /**< Number of restarts due to late heartbeats. */
     uint32_t magic; /**< Magic value indicating initialization (STATS_MAGIC when struct is initialized). */
 } Statistic_t;
 
 static Statistic_t stats[MAX_APPS]; // statistics for the apps
 
-static void clearPingCount(int index)
+static void clearHeartbeatCount(int index)
 {
-    stats[index].ping_count_old = stats[index].ping_count;
-    stats[index].ping_count = 0;
+    stats[index].heartbeat_count_old = stats[index].heartbeat_count;
+    stats[index].heartbeat_count = 0;
 }
 
 void stats_started_at(int index)
 {
     stats[index].started_at = time(NULL);
     stats[index].start_count++;
-    clearPingCount(index);
+    clearHeartbeatCount(index);
 }
 
 void stats_crashed_at(int index)
 {
     stats[index].crashed_at = time(NULL);
     stats[index].crash_count++;
-    clearPingCount(index);
+    clearHeartbeatCount(index);
 }
 
-void stats_ping_reset_at(int index)
+void stats_heartbeat_reset_at(int index)
 {
-    stats[index].ping_reset_at = time(NULL);
-    stats[index].ping_reset_count++;
-    clearPingCount(index);
+    stats[index].heartbeat_reset_at = time(NULL);
+    stats[index].heartbeat_reset_count++;
+    clearHeartbeatCount(index);
 }
 
-void stats_update_ping_time(int index, time_t pingTime)
+void stats_update_heartbeat_time(int index, time_t heartbeatTime)
 {
-    stats[index].ping_count++;
-    // Calculate average ping time
-    stats[index].avg_ping_time = ((stats[index].avg_ping_time * (stats[index].ping_count - 1)) + pingTime) / stats[index].ping_count;
+    stats[index].heartbeat_count++;
+    // Calculate average heartbeat time
+    stats[index].avg_heartbeat_time = ((stats[index].avg_heartbeat_time * (stats[index].heartbeat_count - 1)) + heartbeatTime) / stats[index].heartbeat_count;
 
-    // Update maximum ping time
-    if(pingTime > stats[index].max_ping_time)
+    // Update maximum heartbeat time
+    if(heartbeatTime > stats[index].max_heartbeat_time)
     {
-        stats[index].max_ping_time = pingTime;
+        stats[index].max_heartbeat_time = heartbeatTime;
     }
 
-    // Update minimum ping time
-    if(pingTime < stats[index].min_ping_time || stats[index].ping_count == 1)
+    // Update minimum heartbeat time
+    if(heartbeatTime < stats[index].min_heartbeat_time || stats[index].heartbeat_count == 1)
     {
-        stats[index].min_ping_time = pingTime;
+        stats[index].min_heartbeat_time = heartbeatTime;
     }
 }
 
-void stats_update_first_ping_time(int index, time_t pingTime)
+void stats_update_first_heartbeat_time(int index, time_t heartbeatTime)
 {
-    int start_count = stats[index].start_count + stats[index].crash_count + stats[index].ping_reset_count;
-    // Calculate average first ping time
-    stats[index].avg_first_ping_time = ((stats[index].avg_first_ping_time * (start_count - 1)) + pingTime) / start_count;
+    int start_count = stats[index].start_count + stats[index].crash_count + stats[index].heartbeat_reset_count;
+    // Calculate average first heartbeat time
+    stats[index].avg_first_heartbeat_time = ((stats[index].avg_first_heartbeat_time * (start_count - 1)) + heartbeatTime) / start_count;
 
-    // Update maximum first ping time
-    if(pingTime > stats[index].max_first_ping_time)
+    // Update maximum first heartbeat time
+    if(heartbeatTime > stats[index].max_first_heartbeat_time)
     {
-        stats[index].max_first_ping_time = pingTime;
+        stats[index].max_first_heartbeat_time = heartbeatTime;
     }
 
-    // Update minimum first ping time
-    if(pingTime < stats[index].min_first_ping_time || stats[index].start_count == 1)
+    // Update minimum first heartbeat time
+    if(heartbeatTime < stats[index].min_first_heartbeat_time || stats[index].start_count == 1)
     {
-        stats[index].min_first_ping_time = pingTime;
+        stats[index].min_first_heartbeat_time = heartbeatTime;
     }
 }
 
-static char *print_date(const time_t *t)
+static char *printDate(const time_t *t)
 {
     static char ts[22]; // Fixme : solve without internal static buffer
 
@@ -146,20 +146,20 @@ void stats_print_to_file(int index)
     }
 
     fprintf(fp, "Statistics for App %d %s:\n", index, get_app_name(index));
-    fprintf(fp, "Started at: %s\n", print_date(&stats[index].started_at));
-    fprintf(fp, "Crashed at: %s\n", print_date(&stats[index].crashed_at));
-    fprintf(fp, "Ping reset at: %s\n", print_date(&stats[index].ping_reset_at));
+    fprintf(fp, "Started at: %s\n", printDate(&stats[index].started_at));
+    fprintf(fp, "Crashed at: %s\n", printDate(&stats[index].crashed_at));
+    fprintf(fp, "Heartbeat reset at: %s\n", printDate(&stats[index].heartbeat_reset_at));
     fprintf(fp, "Start count: %zu\n", stats[index].start_count);
     fprintf(fp, "Crash count: %zu\n", stats[index].crash_count);
-    fprintf(fp, "Ping reset count: %zu\n", stats[index].ping_reset_count);
-    fprintf(fp, "Ping count: %zu\n", stats[index].ping_count);
-    fprintf(fp, "Ping count old: %zu\n", stats[index].ping_count_old);
-    fprintf(fp, "Average first ping time: %lld seconds\n", (long long)stats[index].avg_first_ping_time);
-    fprintf(fp, "Maximum first ping time: %lld seconds\n", (long long)stats[index].max_first_ping_time);
-    fprintf(fp, "Minimum first ping time: %lld seconds\n", (long long)stats[index].min_first_ping_time);
-    fprintf(fp, "Average ping time: %lld seconds\n", (long long)stats[index].avg_ping_time);
-    fprintf(fp, "Maximum ping time: %lld seconds\n", (long long)stats[index].max_ping_time);
-    fprintf(fp, "Minimum ping time: %lld seconds\n", (long long)stats[index].min_ping_time);
+    fprintf(fp, "Heartbeat reset count: %zu\n", stats[index].heartbeat_reset_count);
+    fprintf(fp, "Heartbeat count: %zu\n", stats[index].heartbeat_count);
+    fprintf(fp, "Heartbeat count old: %zu\n", stats[index].heartbeat_count_old);
+    fprintf(fp, "Average first heartbeat time: %lld seconds\n", (long long)stats[index].avg_first_heartbeat_time);
+    fprintf(fp, "Maximum first heartbeat time: %lld seconds\n", (long long)stats[index].max_first_heartbeat_time);
+    fprintf(fp, "Minimum first heartbeat time: %lld seconds\n", (long long)stats[index].min_first_heartbeat_time);
+    fprintf(fp, "Average heartbeat time: %lld seconds\n", (long long)stats[index].avg_heartbeat_time);
+    fprintf(fp, "Maximum heartbeat time: %lld seconds\n", (long long)stats[index].max_heartbeat_time);
+    fprintf(fp, "Minimum heartbeat time: %lld seconds\n", (long long)stats[index].min_heartbeat_time);
     fprintf(fp, "Magic: %X\n", stats[index].magic);
     fclose(fp);
     LOGD("Statistics for App %d printed to %s", index, filename);
