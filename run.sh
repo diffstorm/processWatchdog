@@ -85,7 +85,7 @@ echo "Starting $0"
 
 while :
 do
-	chmod +x ${homedir}/${app}
+    chmod +x ${homedir}/${app}
     ${homedir}/${app} -i ${homedir}/${ini}
     RET_CODE=$?
     CURRENTDATE=$(date +"%d-%m-%Y %T")
@@ -104,7 +104,7 @@ do
     fi
 
     sleep 1
-	
+
     sync
 
     echo "Restarting $0"

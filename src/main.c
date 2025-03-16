@@ -229,7 +229,7 @@ void help(char *progname)
     fprintf(stderr, GREEN "\nINI File example config:\n" RESET
             "[processWatchdog]\n"
             "udp_port = 12345\n"
-            "nWdtApps = 4\n"
+            "n_apps = 4\n"
             "1_name = App1\n"
             "1_start_delay = 10\n"
             "1_heartbeat_delay = 60\n"

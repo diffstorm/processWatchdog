@@ -26,11 +26,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
-#include <ctype.h>
-#include <limits.h>
 #include <time.h>
 #include <signal.h>
 #include <unistd.h>
@@ -189,7 +186,7 @@ static int handler(void *user, const char *section, const char *name, const char
         udp_port = atoi(value);
     }
 
-    if(MATCH(_section, "nWdtApps"))
+    if(MATCH(_section, "n_apps"))
     {
         app_count = atoi(value);
     }
@@ -275,16 +272,17 @@ int read_ini_file()
 
 bool is_application_running(int i)
 {
-    pid_t result = -1;
-
     if(apps[i].pid > 0)
     {
         // Check if the application is running on Linux
         if(kill(apps[i].pid, 0) == 0)
         {
-            //LOGD("Process %s is running", apps[i].name);
-            /* process is running or a zombie */
-            result = 0;
+            return true;  // Process is running
+        }
+        else if(errno == EPERM)
+        {
+            LOGE("No permission to check if process %s is running : %s", apps[i].name, strerror(errno));
+            return true;
         }
         else
         {
@@ -292,7 +290,7 @@ bool is_application_running(int i)
         }
     }
 
-    return (result == 0);
+    return false;
 }
 
 bool is_application_started(int i)
@@ -317,12 +315,17 @@ void start_application(int i)
     }
     else if(pid == 0)
     {
-        /* Delete signal handlers */
-        signal(SIGINT, SIG_DFL); // restart
-        signal(SIGTERM, SIG_DFL); // terminate
-        signal(SIGQUIT, SIG_DFL); // reboot
-        signal(SIGUSR1, SIG_DFL); // terminate
-        signal(SIGUSR2, SIG_DFL); // rfu
+        // Child process
+        // Reset signals to default
+        struct sigaction sa;
+        sa.sa_handler = SIG_DFL;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = 0;
+        sigaction(SIGINT, &sa, NULL);
+        sigaction(SIGTERM, &sa, NULL);
+        sigaction(SIGQUIT, &sa, NULL);
+        sigaction(SIGUSR1, &sa, NULL);
+        sigaction(SIGUSR2, &sa, NULL);
         LOGD("Starting the process %s with CMD : %s", apps[i].name, apps[i].cmd);
         run_command(apps[i].cmd);
         LOGE("Process %s stopped running", apps[i].name);
@@ -344,68 +347,66 @@ void kill_application(int i)
     bool killed = false;
     LOGD("Killing process %s", apps[i].name);
 
-    // Send the SIGTERM signal to the application on Linux
-    if(kill(apps[i].pid, SIGTERM) < 0)
+    if(kill(apps[i].pid, SIGTERM) < 0 && errno != ESRCH)
     {
-        if(errno != ESRCH) // No such process
-        {
-            LOGE("Failed to terminate process %s, error: %d - %s", apps[i].name, errno, strerror(errno));
-        }
+        LOGE("Failed to terminate process %s, error: %d - %s", apps[i].name, errno, strerror(errno));
     }
 
-    // Wait for the process to terminate
     int status;
-    LOGD("Waiting for the process %s", apps[i].name);
     int max_wait = MAX_WAIT_PROCESS_TERMINATION; // [seconds]
+    LOGD("Waiting for the process %s", apps[i].name);
 
     do
     {
         sleep(1);
+        int ret = waitpid(apps[i].pid, &status, WNOHANG | WUNTRACED | WCONTINUED);
 
-        if(waitpid(apps[i].pid, &status, WUNTRACED | WCONTINUED) < 0)
+        if(ret == 0)
         {
-            if(errno != ECHILD)
+            LOGD("Process %s is still running", apps[i].name);
+        }
+        else if(ret < 0)
+        {
+            if(errno == ECHILD)
             {
-                LOGE("Failed to wait for process %s, error : %d - %s", apps[i].name, errno, strerror(errno));
+                LOGD("Process %s already terminated", apps[i].name);
+                max_wait = 0;
+            }
+            else
+            {
+                LOGE("Failed to wait for process %s, error: %d - %s", apps[i].name, errno, strerror(errno));
+            }
+        }
+        else if(ret > 0)
+        {
+            if(WIFEXITED(status))
+            {
+                LOGD("Process %s exited, status=%d", apps[i].name, WEXITSTATUS(status));
+                max_wait = 0;
+            }
+            else if(WIFSIGNALED(status))
+            {
+                LOGD("Process %s killed by signal %d", apps[i].name, WTERMSIG(status));
+                max_wait = 0;
+            }
+            else if(WIFSTOPPED(status))
+            {
+                LOGD("Process %s stopped by signal %d", apps[i].name, WSTOPSIG(status));
+                max_wait = 0;
             }
         }
 
-        if(WIFEXITED(status))
-        {
-            LOGD("Process %s exited, status=%d", apps[i].name, WEXITSTATUS(status));
-            max_wait = 0;
-        }
-        else if(WIFSIGNALED(status))
-        {
-            LOGD("Process %s killed by signal %d", apps[i].name, WTERMSIG(status));
-            max_wait = 0;
-        }
-        else if(WIFSTOPPED(status))
-        {
-            LOGD("Process %s stopped by signal %d", apps[i].name, WSTOPSIG(status));
-            max_wait = 0;
-        }
-        else if(WIFCONTINUED(status))
-        {
-            LOGD("Process %s continued", apps[i].name);
-            max_wait--;
-        }
+        max_wait--;
     }
-    while(0 < max_wait);
+    while(max_wait > 0);
 
-    sleep(1);
-
-    // If the process hasn't terminated after receiving SIGTERM, send the SIGKILL signal
     if(is_application_running(i))
     {
         LOGD("Sending SIGKILL to process %s", apps[i].name);
 
-        if(kill(apps[i].pid, SIGKILL) < 0)
+        if(kill(apps[i].pid, SIGKILL) < 0 && errno != ESRCH)
         {
-            if(errno != ESRCH) // No such process
-            {
-                LOGE("Failed to kill process %s, error : %d - %s", apps[i].name, errno, strerror(errno));
-            }
+            LOGE("Failed to kill process %s, error: %d - %s", apps[i].name, errno, strerror(errno));
         }
         else
         {
@@ -429,34 +430,44 @@ void kill_application(int i)
         apps[i].first_heartbeat = false;
         apps[i].pid = 0;
     }
+    else
+    {
+        LOGE("Failed to terminate process %s", apps[i].name);
+    }
 }
 
 void restart_application(int i)
 {
-    // Log that the application is being restarted
     LOGD("Restarting process %s", apps[i].name);
 
-    // Kill the existing instance of the application
     if(is_application_running(i))
     {
         kill_application(i);
     }
 
-    // Start a new instance of the application
     start_application(i);
-    // Wait for the new instance of the application to start
-    sleep(2);
+    // Wait for the application to start
+    int wait_time = 0;
 
-    // Check if the new instance of the application is running
+    while(wait_time < MAX_WAIT_PROCESS_START)
+    {
+        sleep(1);
+
+        if(is_application_running(i))
+        {
+            break;
+        }
+
+        wait_time++;
+    }
+
     if(!is_application_running(i))
     {
         LOGE("Failed to start process %s", apps[i].name);
     }
     else
     {
-        // Update the last_heartbeat time to prevent immediate restart
         update_heartbeat_time(i);
-        // Log that the application has been successfully restarted
         LOGI("Process %s restarted successfully", apps[i].name);
     }
 }

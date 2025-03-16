@@ -33,6 +33,7 @@
 #define MAX_APPS 6 /**< Maximum supported number of applications. */
 #define MAX_APP_CMD_LENGTH 256 /**< Maximum length of the command to start an application. */
 #define MAX_APP_NAME_LENGTH 32 /**< Maximum length of an application name. */
+#define MAX_WAIT_PROCESS_START 5 /**< Maximum time to wait for a process to start running (seconds). */
 #define MAX_WAIT_PROCESS_TERMINATION 30 /**< Maximum time to wait for a process to terminate (seconds). */
 #define INI_FILE "config.ini" /**< Default ini file path. */
 
