@@ -36,6 +36,7 @@
 #define MAX_WAIT_PROCESS_START 5 /**< Maximum time to wait for a process to start running (seconds). */
 #define MAX_WAIT_PROCESS_TERMINATION 30 /**< Maximum time to wait for a process to terminate (seconds). */
 #define INI_FILE "config.ini" /**< Default ini file path. */
+#define UDP_PORT 12345 /**< Default udp port. */
 
 // Function prototypes
 

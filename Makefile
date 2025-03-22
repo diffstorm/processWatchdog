@@ -33,7 +33,7 @@ $(DEPLOY_DIR):
 	mkdir -p $(DEPLOY_DIR)
 
 clean:
-	rm -f $(DEPLOY_DIR)/$(TARGET_EXEC)
+	rm -f $(DEPLOY_DIR)/$(TARGET_EXEC) $(DEPLOY_DIR)/stats_*.log $(DEPLOY_DIR)/stats_*.raw wdt.log
 
 install: $(DEPLOY_DIR)/$(TARGET_EXEC)
 	cp $(DEPLOY_DIR)/$(TARGET_EXEC) ~/

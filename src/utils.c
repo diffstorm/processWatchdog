@@ -368,6 +368,21 @@ int parse_number(const char *ptr, int length, char *cnt)
     return sum;
 }
 
+bool parse_int(const char *ptr, int min_val, int max_val, int *result)
+{
+    char *endptr;
+    errno = 0;
+    long tmp = strtol(ptr, &endptr, 10);
+
+    if(errno != 0 || *endptr != '\0' || tmp < min_val || tmp > max_val)
+    {
+        return false;
+    }
+
+    *result = (int)tmp;
+    return true;
+}
+
 void substring(char s[], char sub[], int p, int l)
 {
     int c = 0;

@@ -55,13 +55,18 @@ typedef struct
     time_t last_heartbeat; /**< Time when the last heartbeat was received from the application. */
 } Application_t;
 
+typedef struct
+{
+    int app_count; /**< Total number of applications found in the ini file. */
+    int udp_port; /**< UDP port number specified in the ini file. */
+    char ini_file[MAX_APP_CMD_LENGTH]; /**< Path to the ini file. */
+    time_t ini_last_modified_time; /**< Last modified time of the ini file. */
+    time_t uptime; /**< System uptime in seconds. */
+    int ini_index; /**< Index used to read an array in the ini file. */
+} AppState_t;
+
 static Application_t apps[MAX_APPS]; /**< Array of Application_t structures representing applications defined in the ini file. */
-static int app_count; /**< Total number of applications found in the ini file. */
-static int udp_port = 12345; /**< UDP port number specified in the ini file. */
-static char ini_file[MAX_APP_CMD_LENGTH] = INI_FILE; /**< Path to the ini file. */
-static time_t ini_last_modified_time; /**< Last modified time of the ini file. */
-static long uptime; /**< System uptime in seconds. */
-static int ini_index; /**< Index used to read an array in the ini file. */
+static AppState_t app_state = {0};
 
 //------------------------------------------------------------------
 
@@ -89,7 +94,7 @@ void update_heartbeat_time(int i)
 
 int find_pid(int pid)
 {
-    for(int i = 0; i < app_count; i++)
+    for(int i = 0; i < app_state.app_count; i++)
     {
         if(0 < apps[i].pid && pid == apps[i].pid)
         {
@@ -137,29 +142,6 @@ bool get_first_heartbeat(int i)
 
 //------------------------------------------------------------------
 
-int set_ini_file(char *path)
-{
-    int ret = 1; // fail
-    int length = strlen(path);
-
-    if(NULL != path && 0 < length && MAX_APP_CMD_LENGTH > length)
-    {
-        if(f_exist(path))
-        {
-            strncpy(ini_file, path, MAX_APP_CMD_LENGTH);
-            LOGD("ini file has been set to %s", ini_file);
-            ret = 0; // success
-        }
-    }
-
-    if(ret)
-    {
-        LOGE("Error setting ini file %s", path);
-    }
-
-    return ret;
-}
-
 static time_t file_modified_time(char *path)
 {
     struct stat attr;
@@ -169,81 +151,126 @@ static time_t file_modified_time(char *path)
 
 bool is_ini_updated()
 {
-    time_t file_last_modified_time = file_modified_time(ini_file);
-    return (file_last_modified_time != ini_last_modified_time);
+    time_t file_last_modified_time = file_modified_time(app_state.ini_file);
+    return (file_last_modified_time != app_state.ini_last_modified_time);
+}
+
+static int check_ini_file(char *path)
+{
+    if(!path || strlen(path) == 0 || strlen(path) >= MAX_APP_CMD_LENGTH)
+    {
+        return 1;
+    }
+
+    if(!f_exist(path))
+    {
+        return 1;
+    }
+
+    return 0;
+}
+
+int set_ini_file(char *path)
+{
+    if(check_ini_file(path))
+    {
+        LOGE("Invalid path");
+        return 1;
+    }
+
+    snprintf(app_state.ini_file, MAX_APP_CMD_LENGTH, "%s", path);
+    LOGD("INI file set to: %s", app_state.ini_file);
+    return 0;
 }
 
 static int handler(void *user, const char *section, const char *name, const char *value)
 {
     (void)(user);
-    const char *_section = "processWatchdog";
-    char b[INI_MAX_LINE];
-#define MATCH(s, n) strcmp(section, s) == 0 && strcmp(name, n) == 0
-#define SECTION(n, s) snprintf(b, sizeof(b) - 1, "%d_%s", n + 1, s);
+    const char *target_section = "processWatchdog";
+    char expected_name[INI_MAX_LINE];
 
-    if(MATCH(_section, "udp_port"))
+    if(strcmp(section, target_section) != 0)
     {
-        udp_port = atoi(value);
+        return 1;
     }
 
-    if(MATCH(_section, "n_apps"))
+    // Global parameters
+    if(strcmp(name, "udp_port") == 0)
     {
-        app_count = atoi(value);
+        if(!parse_int(value, 1, 65535, &app_state.udp_port))
+        {
+            LOGE("Invalid UDP port: %s", value);
+            return 0;
+        }
+
+        return 1;
     }
 
-    if(app_count > 0)
+    if(strcmp(name, "n_apps") == 0)
     {
-        SECTION(ini_index, "name");
-
-        if(MATCH(_section, b))
+        if(!parse_int(value, 0, MAX_APPS, &app_state.app_count))
         {
-            int length = strlen(value);
-
-            if(length > MAX_APP_NAME_LENGTH)
-            {
-                LOGE("NAME is longer than %d", MAX_APP_NAME_LENGTH);
-            }
-
-            length = length > MAX_APP_NAME_LENGTH ? MAX_APP_NAME_LENGTH : length;
-            strncpy(apps[ini_index].name, value, length);
+            LOGE("Invalid n_apps: %s", value);
+            return 0;
         }
 
-        SECTION(ini_index, "start_delay");
+        return 1;
+    }
 
-        if(MATCH(_section, b))
+    // Application parameters
+    int index = app_state.ini_index;
+
+    if(index >= app_state.app_count)
+    {
+        return 1;
+    }
+
+#define GEN_NAME(field) snprintf(expected_name, sizeof(expected_name), "%d_%s", index + 1, field)
+
+    if(GEN_NAME("name"), strcmp(name, expected_name) == 0)
+    {
+        snprintf(apps[index].name, MAX_APP_NAME_LENGTH, "%s", value);
+
+        if(strlen(value) >= MAX_APP_NAME_LENGTH)
         {
-            apps[ini_index].start_delay = atoi(value);
+            LOGW("App %d name truncated", index);
+        }
+    }
+    else if(GEN_NAME("start_delay"), strcmp(name, expected_name) == 0)
+    {
+        if(!parse_int(value, 0, INT_MAX, &apps[index].start_delay))
+        {
+            LOGE("Invalid start_delay for app %d: %s", index, value);
+            return 0;
+        }
+    }
+    else if(GEN_NAME("heartbeat_delay"), strcmp(name, expected_name) == 0)
+    {
+        if(!parse_int(value, 0, INT_MAX, &apps[index].heartbeat_delay))
+        {
+            LOGE("Invalid heartbeat_delay for app %d: %s", index, value);
+            return 0;
+        }
+    }
+    else if(GEN_NAME("heartbeat_interval"), strcmp(name, expected_name) == 0)
+    {
+        if(!parse_int(value, 0, INT_MAX, &apps[index].heartbeat_interval))
+        {
+            LOGE("Invalid heartbeat_interval for app %d: %s", index, value);
+            return 0;
+        }
+    }
+    else if(GEN_NAME("cmd"), strcmp(name, expected_name) == 0)  // this always must be the last one
+    {
+        snprintf(apps[index].cmd, MAX_APP_CMD_LENGTH, "%s", value);
+
+        if(strlen(value) >= MAX_APP_CMD_LENGTH)
+        {
+            LOGE("Invalid cmd for app %d - longer than %d charachters", index, MAX_APP_CMD_LENGTH);
+            return 0;
         }
 
-        SECTION(ini_index, "heartbeat_delay");
-
-        if(MATCH(_section, b))
-        {
-            apps[ini_index].heartbeat_delay = atoi(value);
-        }
-
-        SECTION(ini_index, "heartbeat_interval");
-
-        if(MATCH(_section, b))
-        {
-            apps[ini_index].heartbeat_interval = atoi(value);
-        }
-
-        SECTION(ini_index, "cmd"); // this always must be the last one
-
-        if(MATCH(_section, b))
-        {
-            int length = strlen(value);
-
-            if(length > MAX_APP_CMD_LENGTH)
-            {
-                LOGE("CMD is longer than %d", MAX_APP_CMD_LENGTH);
-            }
-
-            length = length > MAX_APP_CMD_LENGTH ? MAX_APP_CMD_LENGTH : length;
-            strncpy(apps[ini_index].cmd, value, length);
-            ini_index++; // order of the names in the ini are important
-        }
+        app_state.ini_index++; // Move to next app after processing cmd
     }
 
     return 1;
@@ -251,20 +278,34 @@ static int handler(void *user, const char *section, const char *name, const char
 
 int read_ini_file()
 {
-    uptime = get_uptime();
-    LOGD("Reading ini file %s", ini_file);
     memset(apps, 0, sizeof(apps));
-    app_count = 0;
-    ini_index = 0;
+    app_state.ini_index = 0;
+    app_state.app_count = 0;
+    app_state.uptime = get_uptime();
+    app_state.udp_port = UDP_PORT;
 
-    if(ini_parse(ini_file, handler, NULL) < 0)
+    // ini_file could have already set by set_ini_file() earlier
+    if(check_ini_file(app_state.ini_file))
     {
-        LOGE("Can't load %s", ini_file);
+        LOGD("Using default ini file %s", INI_FILE);
+        set_ini_file(INI_FILE);
+    }
+
+    LOGD("Reading ini file %s", app_state.ini_file);
+
+    if(ini_parse(app_state.ini_file, handler, NULL) < 0)
+    {
+        LOGE("Failed to parse INI file %s", app_state.ini_file);
         return 1;
     }
 
-    LOGD("%d processes have found in the ini file %s", app_count, ini_file);
-    ini_last_modified_time = file_modified_time(ini_file);
+    if(app_state.ini_index != app_state.app_count)
+    {
+        LOGW("Config mismatch: Expected %d apps, found %d", app_state.app_count, app_state.ini_index);
+    }
+
+    LOGD("%d processes have found in the ini file %s", app_state.app_count, app_state.ini_file);
+    app_state.ini_last_modified_time = file_modified_time(app_state.ini_file);
     return 0;
 }
 
@@ -272,22 +313,24 @@ int read_ini_file()
 
 bool is_application_running(int i)
 {
-    if(apps[i].pid > 0)
+    if(apps[i].pid <= 0)
     {
-        // Check if the application is running on Linux
-        if(kill(apps[i].pid, 0) == 0)
-        {
-            return true;  // Process is running
-        }
-        else if(errno == EPERM)
-        {
-            LOGE("No permission to check if process %s is running : %s", apps[i].name, strerror(errno));
-            return true;
-        }
-        else
-        {
-            LOGD("Process %s is not running : %s", apps[i].name, strerror(errno));
-        }
+        return false;
+    }
+
+    // Check if the application is running
+    if(kill(apps[i].pid, 0) == 0)
+    {
+        return true;  // Process is running
+    }
+    else if(errno == EPERM)
+    {
+        LOGE("No permission to check if process %s is running : %s", apps[i].name, strerror(errno));
+        return true;
+    }
+    else
+    {
+        LOGD("Process %s is not running : %s", apps[i].name, strerror(errno));
     }
 
     return false;
@@ -300,7 +343,7 @@ bool is_application_started(int i)
 
 bool is_application_start_time(int i)
 {
-    return (get_uptime() - uptime) >= (long)apps[i].start_delay;
+    return (get_uptime() - app_state.uptime) >= (long)apps[i].start_delay;
 }
 
 void start_application(int i)
@@ -346,6 +389,11 @@ void kill_application(int i)
 {
     bool killed = false;
     LOGD("Killing process %s", apps[i].name);
+
+    if(apps[i].pid <= 0)
+    {
+        return;
+    }
 
     if(kill(apps[i].pid, SIGTERM) < 0 && errno != ESRCH)
     {
@@ -474,7 +522,7 @@ void restart_application(int i)
 
 int get_app_count(void)
 {
-    return app_count;
+    return app_state.app_count;
 }
 
 char *get_app_name(int i)
@@ -484,5 +532,5 @@ char *get_app_name(int i)
 
 int get_udp_port(void)
 {
-    return udp_port;
+    return app_state.udp_port;
 }

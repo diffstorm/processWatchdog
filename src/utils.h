@@ -255,6 +255,21 @@ void *findin(void *haystack, size_t haystacksize, void *needle, size_t needlesiz
 int parse_number(const char *ptr, int length, char *cnt);
 
 /**
+    @brief Parses an integer from a string within a specified range.
+
+    This function safely converts a string to an integer while ensuring it falls
+    within the given range. If the conversion fails or the value is out of bounds,
+    the function returns false.
+
+    @param ptr Pointer to the string containing the number.
+    @param min_val Minimum acceptable integer value.
+    @param max_val Maximum acceptable integer value.
+    @param result Pointer to store the parsed integer on success.
+    @return true if parsing is successful, false otherwise.
+*/
+bool parse_int(const char *ptr, int min_val, int max_val, int *result);
+
+/**
     @brief Copies in string in s starting from p with length into sub
 
     @param s String buffer.
