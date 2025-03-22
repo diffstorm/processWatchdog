@@ -77,6 +77,9 @@ print(f'[{current_time}] {appname}: Waiting {heartbeat_delay} seconds heartbeat_
 time.sleep(heartbeat_delay)
 wait_time = heartbeat_delay
 
+if heartbeat_interval == 0:
+    heartbeat_interval = 1000
+
 # Set the running time of the program
 start_time = time.time()
 

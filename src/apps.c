@@ -107,27 +107,45 @@ int find_pid(int pid)
 
 time_t get_heartbeat_time(int i)
 {
-    time_t t = time(NULL);
-    return t - apps[i].last_heartbeat;
+    time_t now = time(NULL);
+    return now - apps[i].last_heartbeat;
 }
 
 bool is_timeup(int i)
 {
-    bool ret = false;
-    time_t t = time(NULL);
+    const Application_t *app = &apps[i];
 
-    if(t < apps[i].last_heartbeat)
+    if(!app->started)
     {
+        return false;    // App not running yet
+    }
+
+    if(app->heartbeat_interval <= 0)
+    {
+        return false;    // Heartbeat not expected for this app
+    }
+
+    const time_t now = time(NULL);
+
+    if(now < app->last_heartbeat)
+    {
+        LOGW("Time anomaly detected for %s (system clock changed?)", app->name);
         update_heartbeat_time(i);
+        return false;  // Reset and give another interval
     }
 
-    if(t - apps[i].last_heartbeat >= (apps[i].first_heartbeat ? apps[i].heartbeat_interval : apps[i].heartbeat_delay))
+    const time_t first_heartbeat_threshold = (time_t)MAX(app->heartbeat_interval, app->heartbeat_delay); // delay is designed to be larger than interval
+    const time_t regular_threshold = (time_t)app->heartbeat_interval;
+    const time_t threshold = app->first_heartbeat ? regular_threshold : first_heartbeat_threshold;
+    const time_t elapsed = now - app->last_heartbeat;
+
+    if(elapsed >= threshold)
     {
-        ret = true;
-        LOGD("Heartbeat time up for %s", apps[i].name);
+        LOGD("Heartbeat time up for %s", app->name);
+        return true;
     }
 
-    return ret;
+    return false;
 }
 
 void set_first_heartbeat(int i)

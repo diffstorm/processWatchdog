@@ -73,6 +73,8 @@ typedef uint64_t clk_t;
 
 /* macros */
 #define UNUSED(x) (void)(x) /**< Macro to suppress compiler warnings about unused variables. */
+#define MAX(a,b) ((a) > (b) ? (a) : (b))
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
 
 /* functions */
 
