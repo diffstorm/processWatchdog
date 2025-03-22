@@ -11,7 +11,7 @@ The Process Watchdog is a Linux-based utility designed to start, monitor and man
 ## Overview
 This application acts as a vigilant guardian for your critical processes, ensuring they remain operational at all times. It accomplishes this task by regularly monitoring the specified processes and taking appropriate actions if any anomalies are detected. The primary function of this application is to ensure that the managed processes remain active, restarting them if they crash or stop sending heartbeat messages.
 
-This application is particularly useful in environments where multiple processes need to be constantly running, such as server systems, clouds or embedded devices. It operates based on the principle that each monitored process should periodically send heartbeat messages. If a process fails to send a heartbeat within the specified time interval, the watchdog manager assumes the process has halted/hang and automatically restarts it.
+This application is particularly useful in environments where multiple processes need to be constantly running, such as server systems, clouds or embedded devices. It operates based on the principle that each monitored process should periodically send heartbeat messages. If a process fails to send a heartbeat within the specified time interval, the watchdog manager assumes the process has halted/hang and automatically restarts it. However there is also support for non-heartbeat sending processes.
 
 ## Features
 - Starts and monitors specified processes listed in a configuration file.
@@ -22,8 +22,12 @@ This application is particularly useful in environments where multiple processes
 - Generates statistics log files to track the status and history of each managed process.
 
 ## Requirements
-- Processes managed by Process Watchdog must periodically send their heartbeat messages to prevent being restarted.
+- If `heartbeat_interval > 0` : Processes managed by Process Watchdog must periodically send their heartbeat messages to prevent being restarted.
 - Configuration file `config.ini` in the same directory with details about the processes to be managed and the UDP port for communication.
+
+## Non-heartbeat sending processes
+Process Watchdog is also supports non-heartbeat sending processes.
+Set the `heartbeat_interval` config to zero to skip heartbeat checks for given processes.
 
 ## Configuration File : `config.ini`
 An example configuration file looks like this:
@@ -64,11 +68,11 @@ n_apps = 4
 - `name` : Name of the application.
 - `start_delay` : Delay in seconds before starting the application.
 - `heartbeat_delay` : Time in seconds to wait before expecting a heartbeat from the application.
-- `heartbeat_interval` : Maximum time period in seconds between heartbeats.
+- `heartbeat_interval` : Maximum time period in seconds between heartbeats (`0`:disables heartbeat checks).
 - `cmd` : Command to start the application.
 
 ## Heartbeat Message
-A heartbeat message is a UDP packet with the process ID (`PID`) prefixed by `p` (e.g., `p12345` for PID `12345`). It is sent periodically by every managed process to a specified UDP port.
+For heartbeat sending processes : A heartbeat message is a UDP packet with the process ID (`PID`) prefixed by `p` (e.g., `p12345` for PID `12345`). It is sent periodically by every managed process to a specified UDP port.
 
 Below are example heartbeat message codes in various languages:
 
