@@ -18,11 +18,27 @@ appname = sys.argv[0]
 role = "crash"
 index = 1
 
-# Get the current timestamp
-current_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+COLOR_TABLE = [
+    ("\033[48;2;255;87;51m", "\033[38;2;255;255;255m"),  # Vibrant Red bg, White text
+    ("\033[48;2;46;204;113m", "\033[38;2;0;0;0m"),  # Emerald Green bg, Black text
+    ("\033[48;2;241;196;15m", "\033[38;2;0;0;0m"),  # Bright Yellow bg, Black text
+    ("\033[48;2;52;152;219m", "\033[38;2;255;255;255m"),  # Sky Blue bg, White text
+    ("\033[48;2;155;89;182m", "\033[38;2;255;255;255m"),  # Amethyst bg, White text
+    ("\033[48;2;26;188;156m", "\033[38;2;0;0;0m"),  # Turquoise bg, Black text
+    ("\033[48;2;231;76;60m", "\033[38;2;255;255;255m"),  # Strong Red bg, White text
+    ("\033[48;2;241;90;34m", "\033[38;2;255;255;255m"),  # Orange bg, White text
+    ("\033[48;2;39;174;96m", "\033[38;2;255;255;255m"),  # Dark Green bg, White text
+    ("\033[48;2;142;68;173m", "\033[38;2;255;255;255m"),  # Dark Purple bg, White text
+    ("\033[48;2;211;84;0m", "\033[38;2;255;255;255m"),  # Pumpkin bg, White text
+    ("\033[48;2;52;73;94m", "\033[38;2;255;255;255m"),  # Midnight Blue bg, White text
+]
+RESET_COLOR = "\033[0m"
 
-# Print a message to stdout
-print(f'[{current_time}] {appname}: Application started', flush=True)
+# Logging function with colors
+def log_message(index, message):
+    bg_color, text_color = COLOR_TABLE[index % len(COLOR_TABLE)]
+    current_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+    print(f'[{current_time}] {appname}: {bg_color}{text_color}{message}{RESET_COLOR}', flush=True)
 
 # Get index
 if len(sys.argv) >= 2:
@@ -30,7 +46,7 @@ if len(sys.argv) >= 2:
         index = int(sys.argv[1])
     except ValueError:
         index = 1
-print(f'[{current_time}] {appname}: Index set to {index}')
+log_message(index, f'Index set to {index}')
 
 # Get role
 if len(sys.argv) >= 3:
@@ -38,77 +54,80 @@ if len(sys.argv) >= 3:
         role = sys.argv[2]
     except ValueError:
         role = "crash"
-print(f'[{current_time}] {appname}: Role set to {role}')
+log_message(index, f'Role set to {role}')
 
-# Store the parameters in variables
+# Get the PID
+pid = str(os.getpid())
+log_message(index, f'Pid is {pid}')
+
+# Load configuration
 config = configparser.ConfigParser()
-config.optionxform=str
+config.optionxform = str
 config.read('config.ini')
+# Read UDP port
 UDP_PORT = config.getint('processWatchdog', 'udp_port')
-print(f'[{current_time}] {appname}: UDP_PORT set to {UDP_PORT}')
+log_message(index, f'UDP_PORT set to {UDP_PORT}')
+# Read name
+name = config.get('processWatchdog', f'{index}_name', fallback=f'process{index}').strip()
+if not name:
+    name = f'Process{index}'
+log_message(index, f'Name set to {name}')
+# Read heartbeat delay
+heartbeat_delay = config.getint('processWatchdog', f'{index}_heartbeat_delay')
+log_message(index, f'{name} Heartbeat delay set to {heartbeat_delay}')
+# Read heartbeat_interval
+heartbeat_interval = config.getint('processWatchdog', f'{index}_heartbeat_interval')
+log_message(index, f'{name} Heartbeat interval set to {heartbeat_interval}')
 
-#start_delay = config.getint('processWatchdog', str(index) + '_start_delay')
-#print(f'[{current_time}] {appname}: Start delay set to {start_delay}')
+# Set the allowed running time dynamically
+max_runtime = max(abs(heartbeat_interval) * 5, 180)
+log_message(index, f'{name} Max runtime set to {max_runtime} seconds')
 
-heartbeat_delay = config.getint('processWatchdog', str(index) + '_heartbeat_delay')
-print(f'[{current_time}] {appname}: Heartbeat delay set to {heartbeat_delay}')
+# If heartbeat_interval is zero or negative, do not send periodic heartbeats
+if heartbeat_interval <= 0:
+    log_message(index, f'{name} No periodic heartbeats will be sent')
+    heartbeat_enabled = False
+else:
+    heartbeat_enabled = True
 
-heartbeat_interval = config.getint('processWatchdog', str(index) + '_heartbeat_interval')
-print(f'[{current_time}] {appname}: Heartbeat interval set to {heartbeat_interval}')
-
-name = config.get('processWatchdog', str(index) + '_name')
-print(f'[{current_time}] {appname}: Name set to {name}')
+# Wait during given heartbeat delay if greater than zero
+if heartbeat_delay > 0:
+    log_message(index, f'{name} Waiting {heartbeat_delay} seconds heartbeat_delay...')
+    time.sleep(heartbeat_delay - 1)
+wait_time = max(heartbeat_delay, 0)
 
 # Create a UDP socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-# Reuse the address
-#sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-# Bind the UDP socket
-#sock.bind(('localhost', UDP_PORT))
-
-# Get the PID
-pid = str(os.getpid())
-
-# Wait during given heartbeat delay
-heartbeat_delay = int(heartbeat_delay / 2 + 1)
-print(f'[{current_time}] {appname}: Waiting {heartbeat_delay} seconds heartbeat_delay...')
-time.sleep(heartbeat_delay)
-wait_time = heartbeat_delay
-
-if heartbeat_interval == 0:
-    heartbeat_interval = 1000
-
-# Set the running time of the program
 start_time = time.time()
 
 while True:
-    # Create the data
-    data = 'p' + pid
+    if heartbeat_enabled:
+        # Create the data
+        data = 'p' + pid
 
-    # Send the data
-    sock.sendto(data.encode('utf-8'), ('localhost', UDP_PORT))
+        # Send the data
+        sock.sendto(data.encode('utf-8'), ('localhost', UDP_PORT))
 
-    # Get the current timestamp
-    current_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+        # Log heartbeat
+        log_message(index, f'{name} Heartbeat sent: {data} after {wait_time} seconds')
 
-    # Print a message to stdout
-    print(f'[{current_time}] {appname}: {name} Heartbeat sent: {data} after {wait_time} seconds', flush=True)
+        # Choose a random waiting time
+        wait_time = max(random.randint(int(heartbeat_interval / 3), int(heartbeat_interval / 2)), 0)
 
-    # Choose a random waiting time
-    wait_time = random.randint(int(heartbeat_interval / 3), int(heartbeat_interval / 2))
+        # Wait for the random time if greater than zero
+        if wait_time > 0:
+            time.sleep(wait_time)
 
-    # Wait for the random time
-    time.sleep(wait_time)
-
-    # Check the running time of the program
+    # Check the running time of the process
     elapsed_time = time.time() - start_time
-    if elapsed_time >= 180:
-        # Print the final message to stdout
+    if elapsed_time >= max_runtime:
         if role == "noheartbeat":
-            print(f'[{current_time}] {appname}: {name} No more heartbeats', flush=True)
-            time.sleep(9000)
+            sleep_time = max(abs(heartbeat_interval) * 5, 100)
+            interval = max(abs(heartbeat_interval + 1) / 10, 2)
+            for _ in range(int(sleep_time / interval)):
+                log_message(index, f'{name} No more heartbeats')
+                time.sleep(interval)
         elif role == "crash":
-            print(f'[{current_time}] {appname}: {name} Program stopped', flush=True)
+            log_message(index, f'{name} process crashed')
             sys.exit(0)
