@@ -34,8 +34,8 @@ jobs:
     - name: Run watchdog (Release test)
       run: |
         echo "Running processWatchdog..."
-        timeout --signal=SIGUSR1 --preserve-status 300s ./processWatchdog > release_watchdog_stdout.log 2> release_watchdog_stderr.log
+        timeout --signal=SIGUSR1 --preserve-status 600s ./processWatchdog > release_watchdog_stdout.log 2> release_watchdog_stderr.log
         echo "Standard Output:"
-        cat watchdog_stdout.log
+        cat release_watchdog_stdout.log
         echo "Standard Error:"
-        cat watchdog_stderr.log
+        cat release_watchdog_stderr.log
