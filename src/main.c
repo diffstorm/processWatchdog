@@ -139,7 +139,26 @@ void parse_commands(char *data, int length)
 
         default:
         {
-            LOGE("Unknown command received : %s", data);
+            const int max_bytes = MAX_APP_NAME_LENGTH;
+            const int max_length = max_bytes * 3;
+            char hexStr[max_length];
+            memset(hexStr, 0, sizeof(hexStr));
+
+            if (length > max_bytes) {
+                length = max_bytes;
+            }
+
+            for (int i = 0; i < length; i++) {
+                snprintf(&hexStr[i * 3], sizeof(hexStr) - (i * 3), "%02X ", data[i]);
+            }
+
+            char printableStr[max_bytes + 1];
+            memset(printableStr, 0, sizeof(printableStr));
+            for (int i = 0; i < length; i++) {
+                printableStr[i] = (data[i] >= 32 && data[i] < 127) ? data[i] : '.';
+            }
+
+            LOGE("Unknown command received : %s | %s", printableStr, hexStr);
         }
         break;
     }
