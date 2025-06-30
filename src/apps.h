@@ -38,6 +38,34 @@
 #define INI_FILE "config.ini" /**< Default ini file path. */
 #define UDP_PORT 12345 /**< Default udp port. */
 
+/**
+    @struct Application_t
+    @brief Structure representing an application defined in the ini file.
+*/
+typedef struct
+{
+    // In the ini file
+    int start_delay; /**< Delay in seconds before starting the application. */
+    int heartbeat_delay; /**< Time in seconds to wait before expecting a heartbeat from the application. */
+    int heartbeat_interval; /**< Maximum time period in seconds between heartbeats. */
+    char name[MAX_APP_NAME_LENGTH]; /**< Name of the application. */
+    char cmd[MAX_APP_CMD_LENGTH]; /**< Command to start the application. */
+    // Not in the ini file
+    bool started; /**< Flag indicating whether the application has been started. */
+    bool first_heartbeat; /**< Flag indicating whether the application has sent its first heartbeat. */
+    int pid; /**< Process ID of the application. */
+    time_t last_heartbeat; /**< Time when the last heartbeat was received from the application. */
+} Application_t;
+
+typedef struct
+{
+    int app_count; /**< Total number of applications found in the ini file. */
+    int udp_port; /**< UDP port number specified in the ini file. */
+    char ini_file[MAX_APP_CMD_LENGTH]; /**< Path to the ini file. */
+    time_t ini_last_modified_time; /**< Last modified time of the ini file. */
+    time_t uptime; /**< System uptime in seconds. */
+} AppState_t;
+
 // Function prototypes
 
 /**

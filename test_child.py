@@ -67,17 +67,30 @@ config.read('config.ini')
 # Read UDP port
 UDP_PORT = config.getint('processWatchdog', 'udp_port')
 log_message(index, f'UDP_PORT set to {UDP_PORT}')
-# Read name
-name = config.get('processWatchdog', f'{index}_name', fallback=f'process{index}').strip()
-if not name:
-    name = f'Process{index}'
+# Determine the application name based on index
+app_names = []
+for section in config.sections():
+    if section.startswith('app:'):
+        app_names.append(section[len('app:'):])
+
+if index - 1 < len(app_names):
+    name = app_names[index - 1]
+else:
+    name = f'Process{index}' # Fallback if index is out of bounds
+
 log_message(index, f'Name set to {name}')
-# Read heartbeat delay
-heartbeat_delay = config.getint('processWatchdog', f'{index}_heartbeat_delay')
-log_message(index, f'{name} Heartbeat delay set to {heartbeat_delay}')
-# Read heartbeat_interval
-heartbeat_interval = config.getint('processWatchdog', f'{index}_heartbeat_interval')
-log_message(index, f'{name} Heartbeat interval set to {heartbeat_interval}')
+
+# Read parameters from the specific app section
+app_section = f'app:{name}'
+if config.has_section(app_section):
+    heartbeat_delay = config.getint(app_section, 'heartbeat_delay')
+    log_message(index, f'{name} Heartbeat delay set to {heartbeat_delay}')
+    heartbeat_interval = config.getint(app_section, 'heartbeat_interval')
+    log_message(index, f'{name} Heartbeat interval set to {heartbeat_interval}')
+else:
+    log_message(index, f'Error: Section {app_section} not found in config.ini. Using default values.')
+    heartbeat_delay = 0
+    heartbeat_interval = 0
 
 # Set the allowed running time dynamically
 max_runtime = max(abs(heartbeat_interval) * 5, 180)

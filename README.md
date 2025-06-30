@@ -35,37 +35,35 @@ An example configuration file looks like this:
 ```ini
 [processWatchdog]
 udp_port = 12345
-n_apps = 4
 
-1_name = Communicator
-1_start_delay = 10
-1_heartbeat_delay = 60
-1_heartbeat_interval = 20
-1_cmd = /usr/bin/python test_child.py 1 crash
+[app:Communicator]
+start_delay = 10
+heartbeat_delay = 60
+heartbeat_interval = 20
+cmd = /usr/bin/python test_child.py 1 crash
 
-2_name = Bot
-2_start_delay = 20
-2_heartbeat_delay = 90
-2_heartbeat_interval = 30
-2_cmd = /usr/bin/python test_child.py 2 noheartbeat
+[app:Bot]
+start_delay = 20
+heartbeat_delay = 90
+heartbeat_interval = 30
+cmd = /usr/bin/python test_child.py 2 noheartbeat
 
-3_name = Publisher
-3_start_delay = 35
-3_heartbeat_delay = 70
-3_heartbeat_interval = 16
-3_cmd = /usr/bin/python test_child.py 3 crash
+[app:Publisher]
+start_delay = 35
+heartbeat_delay = 70
+heartbeat_interval = 16
+cmd = /usr/bin/python test_child.py 3 crash
 
-4_name = Alert
-4_start_delay = 35
-4_heartbeat_delay = 130
-4_heartbeat_interval = 13
-4_cmd = /usr/bin/python test_child.py 4 noheartbeat
+[app:Alert]
+start_delay = 35
+heartbeat_delay = 130
+heartbeat_interval = 13
+cmd = /usr/bin/python test_child.py 4 noheartbeat
 ```
 
 ### Fields
 - `udp_port` : The UDP port to expect heartbeats.
-- `n_apps` : Number of applications to manage (4 in the example).
-- `name` : Name of the application.
+- `[app:<AppName>]` : Each application to be monitored should have its own section prefixed with `app:`. `<AppName>` will be used as the name of the application.
 - `start_delay` : Delay in seconds before starting the application.
 - `heartbeat_delay` : Time in seconds to wait before expecting a heartbeat from the application.
 - `heartbeat_interval` : Maximum time period in seconds between heartbeats (`0`:disables heartbeat checks).
