@@ -210,4 +210,18 @@ char *get_app_name(int i);
 */
 int get_udp_port();
 
+/**
+    @brief Gets direct access to the applications array for other modules.
+
+    @return Pointer to the applications array.
+*/
+Application_t* apps_get_array(void);
+
+/**
+    @brief Gets direct access to the application state for other modules.
+
+    @return Pointer to the application state structure.
+*/
+AppState_t* apps_get_state(void);
+
 #endif // APPS_H

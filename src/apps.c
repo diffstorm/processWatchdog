@@ -20,6 +20,7 @@
 
 #include "apps.h"
 #include "config.h"
+#include "process.h"
 #include "log.h"
 #include "utils.h"
 
@@ -165,213 +166,36 @@ int set_ini_file(char *path)
 
 //------------------------------------------------------------------
 
+// Wrapper functions for backward compatibility - delegate to process module
+// TODO : inline wrapper functions
 bool is_application_running(int i)
 {
-    if(apps[i].pid <= 0)
-    {
-        return false;
-    }
-
-    // Check if the application is running
-    if(kill(apps[i].pid, 0) == 0)
-    {
-        return true;  // Process is running
-    }
-    else if(errno == EPERM)
-    {
-        LOGE("No permission to check if process %s is running : %s", apps[i].name, strerror(errno));
-        return true;
-    }
-    else
-    {
-        LOGD("Process %s is not running : %s", apps[i].name, strerror(errno));
-    }
-
-    return false;
+    return process_is_running(i);
 }
 
 bool is_application_started(int i)
 {
-    return apps[i].started;
+    return process_is_started(i);
 }
 
 bool is_application_start_time(int i)
 {
-    return (get_uptime() - app_state.uptime) >= (long)apps[i].start_delay;
+    return process_is_start_time(i);
 }
 
 void start_application(int i)
 {
-    apps[i].pid = 0;
-    // Start the application on Linux
-    pid_t pid = fork();
-
-    if(pid < 0)
-    {
-        LOGE("Failed to start process %s, error code: %d - %s", apps[i].name, errno, strerror(errno));
-    }
-    else if(pid == 0)
-    {
-        // Child process
-        // Reset signals to default
-        struct sigaction sa;
-        sa.sa_handler = SIG_DFL;
-        sigemptyset(&sa.sa_mask);
-        sa.sa_flags = 0;
-        sigaction(SIGINT, &sa, NULL);
-        sigaction(SIGTERM, &sa, NULL);
-        sigaction(SIGQUIT, &sa, NULL);
-        sigaction(SIGUSR1, &sa, NULL);
-        sigaction(SIGUSR2, &sa, NULL);
-        LOGD("Starting the process %s with CMD : %s", apps[i].name, apps[i].cmd);
-        run_command(apps[i].cmd);
-        LOGE("Process %s stopped running", apps[i].name);
-        exit(EXIT_FAILURE); // exit child process
-    }
-    else
-    {
-        // Parent process
-        apps[i].started = true;
-        apps[i].first_heartbeat = false;
-        apps[i].pid = pid;
-        LOGI("Process %s started (PID %d): %s", apps[i].name, apps[i].pid, apps[i].cmd);
-        update_heartbeat_time(i);
-    }
+    process_start(i);
 }
 
 void kill_application(int i)
 {
-    bool killed = false;
-    LOGD("Killing process %s", apps[i].name);
-
-    if(apps[i].pid <= 0)
-    {
-        return;
-    }
-
-    if(kill(apps[i].pid, SIGTERM) < 0 && errno != ESRCH)
-    {
-        LOGE("Failed to terminate process %s, error: %d - %s", apps[i].name, errno, strerror(errno));
-    }
-
-    int status;
-    int max_wait = MAX_WAIT_PROCESS_TERMINATION; // [seconds]
-    LOGD("Waiting for the process %s", apps[i].name);
-
-    do
-    {
-        sleep(1);
-        int ret = waitpid(apps[i].pid, &status, WNOHANG | WUNTRACED | WCONTINUED);
-
-        if(ret == 0)
-        {
-            LOGD("Process %s is still running", apps[i].name);
-        }
-        else if(ret < 0)
-        {
-            if(errno == ECHILD)
-            {
-                LOGD("Process %s already terminated", apps[i].name);
-                max_wait = 0;
-            }
-            else
-            {
-                LOGE("Failed to wait for process %s, error: %d - %s", apps[i].name, errno, strerror(errno));
-            }
-        }
-        else if(ret > 0)
-        {
-            if(WIFEXITED(status))
-            {
-                LOGD("Process %s exited, status=%d", apps[i].name, WEXITSTATUS(status));
-                max_wait = 0;
-            }
-            else if(WIFSIGNALED(status))
-            {
-                LOGD("Process %s killed by signal %d", apps[i].name, WTERMSIG(status));
-                max_wait = 0;
-            }
-            else if(WIFSTOPPED(status))
-            {
-                LOGD("Process %s stopped by signal %d", apps[i].name, WSTOPSIG(status));
-                max_wait = 0;
-            }
-        }
-
-        max_wait--;
-    }
-    while(max_wait > 0);
-
-    if(is_application_running(i))
-    {
-        LOGD("Sending SIGKILL to process %s", apps[i].name);
-
-        if(kill(apps[i].pid, SIGKILL) < 0 && errno != ESRCH)
-        {
-            LOGE("Failed to kill process %s, error: %d - %s", apps[i].name, errno, strerror(errno));
-        }
-        else
-        {
-            LOGI("Process %s killed", apps[i].name);
-
-            if(!is_application_running(i))
-            {
-                killed = true;
-            }
-        }
-    }
-    else
-    {
-        LOGI("Process %s terminated", apps[i].name);
-        killed = true;
-    }
-
-    if(killed)
-    {
-        apps[i].started = false;
-        apps[i].first_heartbeat = false;
-        apps[i].pid = 0;
-    }
-    else
-    {
-        LOGE("Failed to terminate process %s", apps[i].name);
-    }
+    process_kill(i);
 }
 
 void restart_application(int i)
 {
-    LOGD("Restarting process %s", apps[i].name);
-
-    if(is_application_running(i))
-    {
-        kill_application(i);
-    }
-
-    start_application(i);
-    // Wait for the application to start
-    int wait_time = 0;
-
-    while(wait_time < MAX_WAIT_PROCESS_START)
-    {
-        sleep(1);
-
-        if(is_application_running(i))
-        {
-            break;
-        }
-
-        wait_time++;
-    }
-
-    if(!is_application_running(i))
-    {
-        LOGE("Failed to start process %s", apps[i].name);
-    }
-    else
-    {
-        update_heartbeat_time(i);
-        LOGI("Process %s restarted successfully", apps[i].name);
-    }
+    process_restart(i);
 }
 
 int get_app_count(void)
@@ -387,4 +211,18 @@ char *get_app_name(int i)
 int get_udp_port(void)
 {
     return app_state.udp_port;
+}
+
+//------------------------------------------------------------------
+// External access functions for other modules
+//------------------------------------------------------------------
+
+Application_t* apps_get_array(void)
+{
+    return apps;
+}
+
+AppState_t* apps_get_state(void)
+{
+    return &app_state;
 }
