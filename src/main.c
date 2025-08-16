@@ -24,6 +24,9 @@
 #include "stats.h"
 #include "test.h"
 #include "cmd.h"
+#include "config.h"
+#include "process.h"
+#include "heartbeat.h"
 #include "log.h"
 #include "utils.h"
 
@@ -51,9 +54,9 @@ void parse_commands(char *data, int length)
 
             if(i >= 0)
             {
-                time_t t = get_heartbeat_time(i);
+                time_t t = heartbeat_get_elapsed_time(i);
 
-                if(get_first_heartbeat(i))
+                if(heartbeat_get_first_received(i))
                 {
                     if(t >= 0)
                     {
@@ -65,24 +68,24 @@ void parse_commands(char *data, int length)
                 {
                     LOGD("%s first heartbeat after %d seconds", get_app_name(i), t);
                     stats_update_first_heartbeat_time(i, t);
-                    set_first_heartbeat(i);
+                    heartbeat_set_first_received(i);
                 }
 
-                update_heartbeat_time(i);
+                heartbeat_update_time(i);
             }
         }
         break;
-
 #if 0 // feature disabled
+
         case NET_CMD_START:
         {
             for(int i = 0; i < get_app_count(); i++)
             {
                 if(0 == strncmp(get_app_name(i), cmd.app_name, MAX_APP_NAME_LENGTH - 1))
                 {
-                    if(!is_application_started(i))
+                    if(!process_is_started(i))
                     {
-                        start_application(i);
+                        process_start(i);
                         filecmd_remove_start(i);
                     }
                 }
@@ -96,9 +99,9 @@ void parse_commands(char *data, int length)
             {
                 if(0 == strncmp(get_app_name(i), cmd.app_name, MAX_APP_NAME_LENGTH - 1))
                 {
-                    if(is_application_running(i))
+                    if(process_is_running(i))
                     {
-                        kill_application(i);
+                        process_kill(i);
                         filecmd_create_stop(i);
                     }
                 }
@@ -112,7 +115,7 @@ void parse_commands(char *data, int length)
             {
                 if(0 == strncmp(get_app_name(i), cmd.app_name, MAX_APP_NAME_LENGTH - 1))
                 {
-                    restart_application(i);
+                    process_restart(i);
                     filecmd_remove_restart(i);
                 }
             }
@@ -341,7 +344,7 @@ int main(int argc, char *argv[])
         // Scan applications
         for(int i = 0; i < get_app_count(); i++)
         {
-            if(is_application_started(i))
+            if(process_is_started(i))
             {
                 // Update stats files periodically (15 mins)
                 if((get_uptime() % (15 * 60)) == 0)
@@ -350,37 +353,37 @@ int main(int argc, char *argv[])
                     stats_print_to_file(i);
                 }
 
-                if(!is_application_running(i))
+                if(!process_is_running(i))
                 {
                     LOGE("Process %s has crashed, restarting", get_app_name(i));
                     stats_crashed_at(i);
-                    restart_application(i);
+                    process_restart(i);
                 }
-                else if(is_timeup(i))
+                else if(heartbeat_is_timeout(i))
                 {
                     LOGE("Process %s has not sent a heartbeat in time, restarting", get_app_name(i));
                     stats_heartbeat_reset_at(i);
-                    restart_application(i);
+                    process_restart(i);
                 }
                 else if(filecmd_stop(i))
                 {
                     LOGN("Process %s has stopped by file command", get_app_name(i));
-                    kill_application(i);
+                    process_kill(i);
                 }
                 else if(filecmd_restart(i))
                 {
                     LOGN("Process %s has restarted by file command", get_app_name(i));
-                    restart_application(i);
+                    process_restart(i);
                     filecmd_remove_restart(i);
                 }
             }
             else
             {
-                if(!filecmd_stop(i) && (filecmd_start(i) || is_application_start_time(i)))
+                if(!filecmd_stop(i) && (filecmd_start(i) || process_is_start_time(i)))
                 {
-                    start_application(i);
+                    process_start(i);
 
-                    if(is_application_started(i))
+                    if(process_is_started(i))
                     {
                         LOGN("Process %s has started", get_app_name(i));
                         stats_started_at(i);
@@ -435,9 +438,9 @@ int main(int argc, char *argv[])
         stats_write_to_file(i);
         stats_print_to_file(i);
         // Kill running applications
-        kill_application(i);
+        process_kill(i);
 
-        if(!is_application_running(i))
+        if(!process_is_running(i))
         {
             LOGN("Process %s has ended", get_app_name(i));
         }

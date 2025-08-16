@@ -20,8 +20,6 @@
 
 #include "apps.h"
 #include "config.h"
-#include "process.h"
-#include "heartbeat.h"
 #include "log.h"
 #include "utils.h"
 
@@ -36,8 +34,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <errno.h>
-
-
 
 static Application_t apps[MAX_APPS]; /**< Array of Application_t structures representing applications defined in the ini file. */
 static AppState_t app_state = {0};
@@ -60,32 +56,6 @@ void print_app(int i)
 
 //------------------------------------------------------------------
 
-// Wrapper functions for backward compatibility - delegate to heartbeat module
-void update_heartbeat_time(int i)
-{
-    heartbeat_update_time(i);
-}
-
-time_t get_heartbeat_time(int i)
-{
-    return heartbeat_get_elapsed_time(i);
-}
-
-bool is_timeup(int i)
-{
-    return heartbeat_is_timeout(i);
-}
-
-void set_first_heartbeat(int i)
-{
-    heartbeat_set_first_received(i);
-}
-
-bool get_first_heartbeat(int i)
-{
-    return heartbeat_get_first_received(i);
-}
-
 int find_pid(int pid)
 {
     for(int i = 0; i < app_state.app_count; i++)
@@ -98,8 +68,6 @@ int find_pid(int pid)
 
     return -1;
 }
-
-//------------------------------------------------------------------
 
 int read_ini_file()
 {
@@ -132,40 +100,6 @@ int set_ini_file(char *path)
     return 0;
 }
 
-//------------------------------------------------------------------
-
-// Wrapper functions for backward compatibility - delegate to process module
-// TODO : inline wrapper functions
-bool is_application_running(int i)
-{
-    return process_is_running(i);
-}
-
-bool is_application_started(int i)
-{
-    return process_is_started(i);
-}
-
-bool is_application_start_time(int i)
-{
-    return process_is_start_time(i);
-}
-
-void start_application(int i)
-{
-    process_start(i);
-}
-
-void kill_application(int i)
-{
-    process_kill(i);
-}
-
-void restart_application(int i)
-{
-    process_restart(i);
-}
-
 int get_app_count(void)
 {
     return app_state.app_count;
@@ -181,16 +115,12 @@ int get_udp_port(void)
     return app_state.udp_port;
 }
 
-//------------------------------------------------------------------
-// External access functions for other modules
-//------------------------------------------------------------------
-
-Application_t* apps_get_array(void)
+Application_t *apps_get_array(void)
 {
     return apps;
 }
 
-AppState_t* apps_get_state(void)
+AppState_t *apps_get_state(void)
 {
     return &app_state;
 }

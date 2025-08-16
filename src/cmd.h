@@ -16,16 +16,16 @@
 #ifndef CMD_H
 #define CMD_H
 
-#include <stdbool.h>
-
-// Include apps.h for MAX_APP_NAME_LENGTH constant
 #include "apps.h"
+
+#include <stdbool.h>
 
 /**
     @enum net_command_type_t
     @brief Enumeration of network command types.
 */
-typedef enum {
+typedef enum
+{
     NET_CMD_HEARTBEAT,    /**< Heartbeat command: p<pid> */
     NET_CMD_START,        /**< Start command: a<name> (future) */
     NET_CMD_STOP,         /**< Stop command: o<name> (future) */
@@ -37,7 +37,8 @@ typedef enum {
     @struct net_command_t
     @brief Structure representing a parsed network command.
 */
-typedef struct {
+typedef struct
+{
     net_command_type_t type;                    /**< Type of the command */
     int pid;                                    /**< Process ID for heartbeat commands */
     char app_name[MAX_APP_NAME_LENGTH];         /**< Application name for control commands */
@@ -53,6 +54,6 @@ typedef struct {
     @param length Length of the command data.
     @return Parsed network command structure.
 */
-net_command_t cmd_parse_network(const char* data, int length);
+net_command_t cmd_parse_network(const char *data, int length);
 
 #endif // CMD_H

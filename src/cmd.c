@@ -23,18 +23,15 @@
 #include <string.h>
 #include <limits.h>
 
-//------------------------------------------------------------------
-// Public interface functions
-//------------------------------------------------------------------
-
-net_command_t cmd_parse_network(const char* data, int length)
+net_command_t cmd_parse_network(const char *data, int length)
 {
     net_command_t cmd = {0};
     cmd.type = NET_CMD_UNKNOWN;
     cmd.pid = 0;
     cmd.app_name[0] = '\0';
 
-    if (!data || length <= 0) {
+    if(!data || length <= 0)
+    {
         return cmd;
     }
 
@@ -91,19 +88,23 @@ net_command_t cmd_parse_network(const char* data, int length)
             const int max_length = max_bytes * 3;
             char hexStr[max_length];
             memset(hexStr, 0, sizeof(hexStr));
-
             int safe_length = length;
-            if (safe_length > max_bytes) {
+
+            if(safe_length > max_bytes)
+            {
                 safe_length = max_bytes;
             }
 
-            for (int i = 0; i < safe_length; i++) {
+            for(int i = 0; i < safe_length; i++)
+            {
                 snprintf(&hexStr[i * 3], sizeof(hexStr) - (i * 3), "%02X ", data[i]);
             }
 
             char printableStr[max_bytes + 1];
             memset(printableStr, 0, sizeof(printableStr));
-            for (int i = 0; i < safe_length; i++) {
+
+            for(int i = 0; i < safe_length; i++)
+            {
                 printableStr[i] = (data[i] >= 32 && data[i] < 127) ? data[i] : '.';
             }
 

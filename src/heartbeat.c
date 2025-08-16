@@ -15,7 +15,7 @@
 */
 
 #include "heartbeat.h"
-#include "apps.h"  // For Application_t and access to application data
+#include "apps.h"
 #include "log.h"
 #include "utils.h"
 
@@ -25,35 +25,23 @@
 #include <string.h>
 #include <time.h>
 
-//------------------------------------------------------------------
-// External access to application data (from apps.c)
-//------------------------------------------------------------------
-
-// These functions are implemented in apps.c to provide access to application data
-extern Application_t* apps_get_array(void);
-extern AppState_t* apps_get_state(void);
-
-//------------------------------------------------------------------
-// Public interface functions
-//------------------------------------------------------------------
-
 void heartbeat_update_time(int app_index)
 {
-    Application_t* apps = apps_get_array();
+    Application_t *apps = apps_get_array();
     apps[app_index].last_heartbeat = time(NULL);
     LOGD("Heartbeat time updated for %s", apps[app_index].name);
 }
 
 time_t heartbeat_get_elapsed_time(int app_index)
 {
-    Application_t* apps = apps_get_array();
+    Application_t *apps = apps_get_array();
     time_t now = time(NULL);
     return now - apps[app_index].last_heartbeat;
 }
 
 bool heartbeat_is_timeout(int app_index)
 {
-    Application_t* apps = apps_get_array();
+    Application_t *apps = apps_get_array();
     const Application_t *app = &apps[app_index];
 
     if(!app->started)
@@ -91,12 +79,12 @@ bool heartbeat_is_timeout(int app_index)
 
 void heartbeat_set_first_received(int app_index)
 {
-    Application_t* apps = apps_get_array();
+    Application_t *apps = apps_get_array();
     apps[app_index].first_heartbeat = true;
 }
 
 bool heartbeat_get_first_received(int app_index)
 {
-    Application_t* apps = apps_get_array();
+    Application_t *apps = apps_get_array();
     return apps[app_index].first_heartbeat;
 }

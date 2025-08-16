@@ -14,7 +14,8 @@
 */
 
 #include "process.h"
-#include "apps.h"  // For Application_t and access to application data
+#include "apps.h"
+#include "heartbeat.h"
 #include "log.h"
 #include "utils.h"
 
@@ -29,22 +30,10 @@
 #include <sys/wait.h>
 #include <errno.h>
 
-//------------------------------------------------------------------
-// External access to application data (from apps.c)
-//------------------------------------------------------------------
-
-// These functions will be implemented in apps.c to provide access to application data
-extern Application_t* apps_get_array(void);
-extern AppState_t* apps_get_state(void);
-
-//------------------------------------------------------------------
-// Public interface functions
-//------------------------------------------------------------------
-
 bool process_is_running(int app_index)
 {
-    Application_t* apps = apps_get_array();
-    
+    Application_t *apps = apps_get_array();
+
     if(apps[app_index].pid <= 0)
     {
         return false;
@@ -70,21 +59,20 @@ bool process_is_running(int app_index)
 
 bool process_is_started(int app_index)
 {
-    Application_t* apps = apps_get_array();
+    Application_t *apps = apps_get_array();
     return apps[app_index].started;
 }
 
 bool process_is_start_time(int app_index)
 {
-    Application_t* apps = apps_get_array();
-    AppState_t* state = apps_get_state();
+    Application_t *apps = apps_get_array();
+    AppState_t *state = apps_get_state();
     return (get_uptime() - state->uptime) >= (long)apps[app_index].start_delay;
 }
 
 void process_start(int app_index)
 {
-    Application_t* apps = apps_get_array();
-    
+    Application_t *apps = apps_get_array();
     apps[app_index].pid = 0;
     // Start the application on Linux
     pid_t pid = fork();
@@ -119,14 +107,13 @@ void process_start(int app_index)
         apps[app_index].pid = pid;
         LOGI("Process %s started (PID %d): %s", apps[app_index].name, apps[app_index].pid, apps[app_index].cmd);
         // Use heartbeat module to update heartbeat time
-        extern void update_heartbeat_time(int i);
-        update_heartbeat_time(app_index);
+        heartbeat_update_time(app_index);
     }
 }
 
 void process_kill(int app_index)
 {
-    Application_t* apps = apps_get_array();
+    Application_t *apps = apps_get_array();
     bool killed = false;
     LOGD("Killing process %s", apps[app_index].name);
 
@@ -226,7 +213,7 @@ void process_kill(int app_index)
 
 void process_restart(int app_index)
 {
-    Application_t* apps = apps_get_array();
+    Application_t *apps = apps_get_array();
     LOGD("Restarting process %s", apps[app_index].name);
 
     if(process_is_running(app_index))
@@ -257,8 +244,7 @@ void process_restart(int app_index)
     else
     {
         // Use heartbeat module to update heartbeat time
-        extern void update_heartbeat_time(int i);
-        update_heartbeat_time(app_index);
+        heartbeat_update_time(app_index);
         LOGI("Process %s restarted successfully", apps[app_index].name);
     }
 }

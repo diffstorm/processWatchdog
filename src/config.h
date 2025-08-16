@@ -16,22 +16,10 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include <stdbool.h>
-#include <time.h>
-
-// Include apps.h for data structure definitions
 #include "apps.h"
 
-/**
-    @brief Sets and validates the path to the INI configuration file.
-
-    This function validates the provided INI file path. In the refactored design,
-    the caller is responsible for managing the file path storage.
-
-    @param path Path to the INI file.
-    @return 0 if successful, 1 otherwise.
-*/
-int config_set_file_path(char *path);
+#include <stdbool.h>
+#include <time.h>
 
 /**
     @brief Checks if the INI file has been modified since the last check.

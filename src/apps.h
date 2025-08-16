@@ -76,13 +76,6 @@ typedef struct
 void print_app(int i);
 
 /**
-    @brief Updates the last heartbeat time for the specified application.
-
-    @param i Index of the application.
-*/
-void update_heartbeat_time(int i);
-
-/**
     @brief Finds the index of an application with the specified process ID.
 
     @param pid Process ID to search for.
@@ -91,102 +84,18 @@ void update_heartbeat_time(int i);
 int find_pid(int pid);
 
 /**
-    @brief Gets the elapsed time since the last heartbeat received from the specified application.
+    @brief Gets direct access to the applications array for other modules.
 
-    @param i Index of the application.
-    @return Elapsed time in seconds.
+    @return Pointer to the applications array.
 */
-time_t get_heartbeat_time(int i);
+Application_t *apps_get_array(void);
 
 /**
-    @brief Checks if it is time to expect a heartbeat from the specified application.
+    @brief Gets direct access to the application state for other modules.
 
-    @param i Index of the application.
-    @return true if it is time to expect a heartbeat, false otherwise.
+    @return Pointer to the application state structure.
 */
-bool is_timeup(int i);
-
-/**
-    @brief Sets the flag indicating that the specified application has sent its first heartbeat.
-
-    @param i Index of the application.
-*/
-void set_first_heartbeat(int i);
-
-/**
-    @brief Gets the flag indicating whether the specified application has sent its first heartbeat.
-
-    @param i Index of the application.
-    @return true if the application has sent its first heartbeat, false otherwise.
-*/
-bool get_first_heartbeat(int i);
-
-/**
-    @brief Sets the path to the ini file.
-
-    @param path Path to the ini file.
-    @return 0 if successful, -1 otherwise.
-*/
-int set_ini_file(char *path);
-
-/**
-    @brief Checks if the ini file has been modified since the last check.
-
-    @return true if the ini file has been modified, false otherwise.
-*/
-bool is_ini_updated();
-
-/**
-    @brief Reads the information from the ini file and fills the Application_t structures accordingly.
-
-    @return 0 if successful, -1 otherwise.
-*/
-int read_ini_file();
-
-/**
-    @brief Checks if the specified application is currently running.
-
-    @param i Index of the application.
-    @return true if the application is running, false otherwise.
-*/
-bool is_application_running(int i);
-
-/**
-    @brief Checks if the specified application has been started.
-
-    @param i Index of the application.
-    @return true if the application has been started, false otherwise.
-*/
-bool is_application_started(int i);
-
-/**
-    @brief Checks if it is time to start the specified application based on the start delay.
-
-    @param i Index of the application.
-    @return true if it is time to start the application, false otherwise.
-*/
-bool is_application_start_time(int i);
-
-/**
-    @brief Starts the specified application.
-
-    @param i Index of the application.
-*/
-void start_application(int i);
-
-/**
-    @brief Stops the specified application by killing its process.
-
-    @param i Index of the application.
-*/
-void kill_application(int i);
-
-/**
-    @brief Restarts the specified application.
-
-    @param i Index of the application.
-*/
-void restart_application(int i);
+AppState_t *apps_get_state(void);
 
 /**
     @brief Gets the total number of applications found in the ini file.
@@ -211,17 +120,25 @@ char *get_app_name(int i);
 int get_udp_port();
 
 /**
-    @brief Gets direct access to the applications array for other modules.
+    @brief Sets the path to the ini file.
 
-    @return Pointer to the applications array.
+    @param path Path to the ini file.
+    @return 0 if successful, -1 otherwise.
 */
-Application_t* apps_get_array(void);
+int set_ini_file(char *path);
 
 /**
-    @brief Gets direct access to the application state for other modules.
+    @brief Checks if the ini file has been modified since the last check.
 
-    @return Pointer to the application state structure.
+    @return true if the ini file has been modified, false otherwise.
 */
-AppState_t* apps_get_state(void);
+bool is_ini_updated();
+
+/**
+    @brief Reads the information from the ini file and fills the Application_t structures accordingly.
+
+    @return 0 if successful, -1 otherwise.
+*/
+int read_ini_file();
 
 #endif // APPS_H

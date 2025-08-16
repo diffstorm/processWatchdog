@@ -28,16 +28,6 @@
 #include <errno.h>
 #include <limits.h>
 
-//------------------------------------------------------------------
-// Private helper functions
-//------------------------------------------------------------------
-
-/**
-    @brief Gets the last modification time of a file.
-
-    @param path Path to the file.
-    @return Last modification time as time_t.
-*/
 static time_t config_get_file_modified_time(const char *path)
 {
     struct stat attr;
@@ -45,54 +35,54 @@ static time_t config_get_file_modified_time(const char *path)
     return attr.st_mtime;
 }
 
-//------------------------------------------------------------------
-// Private parsing functions
-//------------------------------------------------------------------
-
-/**
-    @brief INI file handler function for parsing configuration sections and key-value pairs.
-
-    @param user User data (unused).
-    @param section Section name from INI file.
-    @param name Key name from INI file.
-    @param value Value from INI file.
-    @return 1 on success, 0 on error.
-*/
 static int config_ini_handler(void *user, const char *section, const char *name, const char *value)
 {
     // Extract apps and state from user data
-    Application_t *apps = ((void**)user)[0];
-    AppState_t *state = ((void**)user)[1];
-    
+    Application_t *apps = ((void **)user)[0];
+    AppState_t *state = ((void **)user)[1];
     static char last_section[MAX_APP_NAME_LENGTH] = {0};
     const char *app_prefix = "app:";
 
     // New section detected
-    if (strcmp(section, last_section) != 0) {
-        if (strncmp(section, app_prefix, strlen(app_prefix)) == 0) {
-            if (state->app_count < MAX_APPS) {
+    if(strcmp(section, last_section) != 0)
+    {
+        if(strncmp(section, app_prefix, strlen(app_prefix)) == 0)
+        {
+            if(state->app_count < MAX_APPS)
+            {
                 const char *app_name = section + strlen(app_prefix);
-                if (*app_name == '\0') {
+
+                if(*app_name == '\0')
+                {
                     LOGE("Empty app name in section header: [%s]", section);
                     return 0; // Error
                 }
+
                 strncpy(apps[state->app_count].name, app_name, MAX_APP_NAME_LENGTH - 1);
                 apps[state->app_count].name[MAX_APP_NAME_LENGTH - 1] = '\0';
                 state->app_count++;
-            } else {
+            }
+            else
+            {
                 LOGW("MAX_APPS (%d) reached. Ignoring section [%s]", MAX_APPS, section);
             }
         }
+
         strncpy(last_section, section, sizeof(last_section) - 1);
         last_section[sizeof(last_section) - 1] = '\0';
     }
 
     // Find current app index
     int index = -1;
-    if (strncmp(section, app_prefix, strlen(app_prefix)) == 0) {
+
+    if(strncmp(section, app_prefix, strlen(app_prefix)) == 0)
+    {
         const char *app_name = section + strlen(app_prefix);
-        for (int i = 0; i < state->app_count; i++) {
-            if (strcmp(apps[i].name, app_name) == 0) {
+
+        for(int i = 0; i < state->app_count; i++)
+        {
+            if(strcmp(apps[i].name, app_name) == 0)
+            {
                 index = i;
                 break;
             }
@@ -100,32 +90,49 @@ static int config_ini_handler(void *user, const char *section, const char *name,
     }
 
     // Process key-value pairs
-    if (strcmp(section, "processWatchdog") == 0) {
-        if (strcmp(name, "udp_port") == 0) {
-            if (!parse_int(value, 1, 65535, &state->udp_port)) {
+    if(strcmp(section, "processWatchdog") == 0)
+    {
+        if(strcmp(name, "udp_port") == 0)
+        {
+            if(!parse_int(value, 1, 65535, &state->udp_port))
+            {
                 LOGE("Invalid UDP port: %s", value);
                 return 0;
             }
         }
-    } else if (index != -1) { // This is an app section we are tracking
-        if (strcmp(name, "start_delay") == 0) {
-            if (!parse_int(value, 0, INT_MAX, &apps[index].start_delay)) {
+    }
+    else if(index != -1)      // This is an app section we are tracking
+    {
+        if(strcmp(name, "start_delay") == 0)
+        {
+            if(!parse_int(value, 0, INT_MAX, &apps[index].start_delay))
+            {
                 LOGE("Invalid start_delay for app %s: %s", apps[index].name, value);
                 return 0;
             }
-        } else if (strcmp(name, "heartbeat_delay") == 0) {
-            if (!parse_int(value, 0, INT_MAX, &apps[index].heartbeat_delay)) {
+        }
+        else if(strcmp(name, "heartbeat_delay") == 0)
+        {
+            if(!parse_int(value, 0, INT_MAX, &apps[index].heartbeat_delay))
+            {
                 LOGE("Invalid heartbeat_delay for app %s: %s", apps[index].name, value);
                 return 0;
             }
-        } else if (strcmp(name, "heartbeat_interval") == 0) {
-            if (!parse_int(value, 0, INT_MAX, &apps[index].heartbeat_interval)) {
+        }
+        else if(strcmp(name, "heartbeat_interval") == 0)
+        {
+            if(!parse_int(value, 0, INT_MAX, &apps[index].heartbeat_interval))
+            {
                 LOGE("Invalid heartbeat_interval for app %s: %s", apps[index].name, value);
                 return 0;
             }
-        } else if (strcmp(name, "cmd") == 0) {
+        }
+        else if(strcmp(name, "cmd") == 0)
+        {
             snprintf(apps[index].cmd, MAX_APP_CMD_LENGTH, "%s", value);
-            if (strlen(value) >= MAX_APP_CMD_LENGTH) {
+
+            if(strlen(value) >= MAX_APP_CMD_LENGTH)
+            {
                 LOGE("Invalid cmd for app %s - longer than %d charachters", apps[index].name, MAX_APP_CMD_LENGTH);
                 return 0;
             }
@@ -135,9 +142,7 @@ static int config_ini_handler(void *user, const char *section, const char *name,
     return 1;
 }
 
-//------------------------------------------------------------------
-// Public interface functions
-//------------------------------------------------------------------
+
 
 int config_validate_file(const char *ini_path)
 {
@@ -154,21 +159,6 @@ int config_validate_file(const char *ini_path)
     return 0;
 }
 
-int config_set_file_path(char *path)
-{
-    if(config_validate_file(path))
-    {
-        LOGE("Invalid path");
-        return 1;
-    }
-
-    // Note: This function originally set a global variable app_state.ini_file
-    // In the new design, the caller should manage the file path
-    // For now, we just validate and return success
-    LOGD("INI file path validated: %s", path);
-    return 0;
-}
-
 bool config_is_file_updated(const char *ini_path, time_t last_modified)
 {
     time_t file_last_modified_time = config_get_file_modified_time(ini_path);
@@ -182,9 +172,7 @@ int config_parse_file(const char *ini_path, Application_t *apps, int max_apps, A
     state->app_count = 0;
     state->uptime = get_uptime();
     state->udp_port = UDP_PORT;
-
     LOGD("Reading ini file %s", ini_path);
-
     // Prepare user data for the handler
     void *user_data[2] = { apps, state };
 
