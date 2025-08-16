@@ -21,6 +21,7 @@
 #include "apps.h"
 #include "config.h"
 #include "process.h"
+#include "heartbeat.h"
 #include "log.h"
 #include "utils.h"
 
@@ -59,10 +60,30 @@ void print_app(int i)
 
 //------------------------------------------------------------------
 
+// Wrapper functions for backward compatibility - delegate to heartbeat module
 void update_heartbeat_time(int i)
 {
-    apps[i].last_heartbeat = time(NULL);
-    LOGD("Heartbeat time updated for %s", apps[i].name);
+    heartbeat_update_time(i);
+}
+
+time_t get_heartbeat_time(int i)
+{
+    return heartbeat_get_elapsed_time(i);
+}
+
+bool is_timeup(int i)
+{
+    return heartbeat_is_timeout(i);
+}
+
+void set_first_heartbeat(int i)
+{
+    heartbeat_set_first_received(i);
+}
+
+bool get_first_heartbeat(int i)
+{
+    return heartbeat_get_first_received(i);
 }
 
 int find_pid(int pid)
@@ -76,59 +97,6 @@ int find_pid(int pid)
     }
 
     return -1;
-}
-
-time_t get_heartbeat_time(int i)
-{
-    time_t now = time(NULL);
-    return now - apps[i].last_heartbeat;
-}
-
-bool is_timeup(int i)
-{
-    const Application_t *app = &apps[i];
-
-    if(!app->started)
-    {
-        return false;    // App not running yet
-    }
-
-    if(app->heartbeat_interval <= 0)
-    {
-        return false;    // Heartbeat not expected for this app
-    }
-
-    const time_t now = time(NULL);
-
-    if(now < app->last_heartbeat)
-    {
-        LOGW("Time anomaly detected for %s (system clock changed?)", app->name);
-        update_heartbeat_time(i);
-        return false;  // Reset and give another interval
-    }
-
-    const time_t first_heartbeat_threshold = (time_t)MAX(app->heartbeat_interval, app->heartbeat_delay); // delay is designed to be larger than interval
-    const time_t regular_threshold = (time_t)app->heartbeat_interval;
-    const time_t threshold = app->first_heartbeat ? regular_threshold : first_heartbeat_threshold;
-    const time_t elapsed = now - app->last_heartbeat;
-
-    if(elapsed >= threshold)
-    {
-        LOGD("Heartbeat time up for %s", app->name);
-        return true;
-    }
-
-    return false;
-}
-
-void set_first_heartbeat(int i)
-{
-    apps[i].first_heartbeat = true;
-}
-
-bool get_first_heartbeat(int i)
-{
-    return apps[i].first_heartbeat;
 }
 
 //------------------------------------------------------------------

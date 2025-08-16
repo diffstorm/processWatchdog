@@ -118,8 +118,7 @@ void process_start(int app_index)
         apps[app_index].first_heartbeat = false;
         apps[app_index].pid = pid;
         LOGI("Process %s started (PID %d): %s", apps[app_index].name, apps[app_index].pid, apps[app_index].cmd);
-        // Note: update_heartbeat_time will be handled by heartbeat module in Phase 3
-        // For now, we'll call it directly (it's still in apps.c)
+        // Use heartbeat module to update heartbeat time
         extern void update_heartbeat_time(int i);
         update_heartbeat_time(app_index);
     }
@@ -257,8 +256,7 @@ void process_restart(int app_index)
     }
     else
     {
-        // Note: update_heartbeat_time will be handled by heartbeat module in Phase 3
-        // For now, we'll call it directly (it's still in apps.c)
+        // Use heartbeat module to update heartbeat time
         extern void update_heartbeat_time(int i);
         update_heartbeat_time(app_index);
         LOGI("Process %s restarted successfully", apps[app_index].name);
