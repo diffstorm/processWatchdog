@@ -23,6 +23,7 @@
 #include "filecmd.h"
 #include "stats.h"
 #include "test.h"
+#include "cmd.h"
 #include "log.h"
 #include "utils.h"
 
@@ -38,56 +39,46 @@
 
 void parse_commands(char *data, int length)
 {
-    switch(data[0])
+    // Use command module to parse the network command
+    net_command_t cmd = cmd_parse_network(data, length);
+
+    // Handle the parsed command based on its type
+    switch(cmd.type)
     {
-        case 'p': // pid heartbeat : p<pid> ? p1234
+        case NET_CMD_HEARTBEAT:
         {
-            int n = parse_number(data, length, NULL);
-            LOGD("Heartbeat command received from pid %d : %s", n, data);
+            int i = find_pid(cmd.pid);
 
-            if(0 < n && INT32_MAX > n)
+            if(i >= 0)
             {
-                int i = find_pid(n);
+                time_t t = get_heartbeat_time(i);
 
-                if(i >= 0)
+                if(get_first_heartbeat(i))
                 {
-                    time_t t = get_heartbeat_time(i);
-
-                    if(get_first_heartbeat(i))
+                    if(t >= 0)
                     {
-                        if(t >= 0)
-                        {
-                            LOGD("%s heartbeat after %d seconds", get_app_name(i), t);
-                            stats_update_heartbeat_time(i, t);
-                        }
+                        LOGD("%s heartbeat after %d seconds", get_app_name(i), t);
+                        stats_update_heartbeat_time(i, t);
                     }
-                    else
-                    {
-                        LOGD("%s first heartbeat after %d seconds", get_app_name(i), t);
-                        stats_update_first_heartbeat_time(i, t);
-                        set_first_heartbeat(i);
-                    }
-
-                    update_heartbeat_time(i);
                 }
-            }
-            else
-            {
-                LOGE("Invalid pid received, pid %d : %s", n, data);
+                else
+                {
+                    LOGD("%s first heartbeat after %d seconds", get_app_name(i), t);
+                    stats_update_first_heartbeat_time(i, t);
+                    set_first_heartbeat(i);
+                }
+
+                update_heartbeat_time(i);
             }
         }
         break;
+
 #if 0 // feature disabled
-
-        case 'a': // stArt : a<name> ? aBot
+        case NET_CMD_START:
         {
-            LOGD("Start command received: %s", data);
-            char name[MAX_APP_NAME_LENGTH];
-            strncpy(name, &data[1], MAX_APP_NAME_LENGTH - 1);
-
             for(int i = 0; i < get_app_count(); i++)
             {
-                if(0 == strncmp(get_app_name(i), name, MAX_APP_NAME_LENGTH - 1))
+                if(0 == strncmp(get_app_name(i), cmd.app_name, MAX_APP_NAME_LENGTH - 1))
                 {
                     if(!is_application_started(i))
                     {
@@ -99,15 +90,11 @@ void parse_commands(char *data, int length)
         }
         break;
 
-        case 'o': // stOp : o<name> ? oBot
+        case NET_CMD_STOP:
         {
-            LOGD("Stop command received: %s", data);
-            char name[MAX_APP_NAME_LENGTH];
-            strncpy(name, &data[1], MAX_APP_NAME_LENGTH - 1);
-
             for(int i = 0; i < get_app_count(); i++)
             {
-                if(0 == strncmp(get_app_name(i), name, MAX_APP_NAME_LENGTH - 1))
+                if(0 == strncmp(get_app_name(i), cmd.app_name, MAX_APP_NAME_LENGTH - 1))
                 {
                     if(is_application_running(i))
                     {
@@ -119,15 +106,11 @@ void parse_commands(char *data, int length)
         }
         break;
 
-        case 'r': // Restart : r<name> ? rBot
+        case NET_CMD_RESTART:
         {
-            LOGD("Restart command received: %s", data);
-            char name[MAX_APP_NAME_LENGTH];
-            strncpy(name, &data[1], MAX_APP_NAME_LENGTH - 1);
-
             for(int i = 0; i < get_app_count(); i++)
             {
-                if(0 == strncmp(get_app_name(i), name, MAX_APP_NAME_LENGTH - 1))
+                if(0 == strncmp(get_app_name(i), cmd.app_name, MAX_APP_NAME_LENGTH - 1))
                 {
                     restart_application(i);
                     filecmd_remove_restart(i);
@@ -137,30 +120,10 @@ void parse_commands(char *data, int length)
         break;
 #endif
 
+        case NET_CMD_UNKNOWN:
         default:
-        {
-            const int max_bytes = MAX_APP_NAME_LENGTH;
-            const int max_length = max_bytes * 3;
-            char hexStr[max_length];
-            memset(hexStr, 0, sizeof(hexStr));
-
-            if (length > max_bytes) {
-                length = max_bytes;
-            }
-
-            for (int i = 0; i < length; i++) {
-                snprintf(&hexStr[i * 3], sizeof(hexStr) - (i * 3), "%02X ", data[i]);
-            }
-
-            char printableStr[max_bytes + 1];
-            memset(printableStr, 0, sizeof(printableStr));
-            for (int i = 0; i < length; i++) {
-                printableStr[i] = (data[i] >= 32 && data[i] < 127) ? data[i] : '.';
-            }
-
-            LOGE("Unknown command received : %s | %s", printableStr, hexStr);
-        }
-        break;
+            // Error logging is already handled in cmd_parse_network
+            break;
     }
 }
 
