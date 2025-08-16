@@ -19,8 +19,7 @@
 */
 
 #include "apps.h"
-#define INI_MAX_LINE MAX_APP_CMD_LENGTH
-#include "ini.h"
+#include "config.h"
 #include "log.h"
 #include "utils.h"
 
@@ -133,37 +132,27 @@ bool get_first_heartbeat(int i)
 
 //------------------------------------------------------------------
 
-static time_t file_modified_time(char *path)
+int read_ini_file()
 {
-    struct stat attr;
-    stat(path, &attr);
-    return attr.st_mtime;
+    // Use default ini file if not already set
+    if(config_validate_file(app_state.ini_file))
+    {
+        LOGD("Using default ini file %s", INI_FILE);
+        snprintf(app_state.ini_file, MAX_APP_CMD_LENGTH, "%s", INI_FILE);
+    }
+
+    // Use the config module to parse the file
+    return config_parse_file(app_state.ini_file, apps, MAX_APPS, &app_state);
 }
 
 bool is_ini_updated()
 {
-    time_t file_last_modified_time = file_modified_time(app_state.ini_file);
-    return (file_last_modified_time != app_state.ini_last_modified_time);
-}
-
-static int check_ini_file(char *path)
-{
-    if(!path || strlen(path) == 0 || strlen(path) >= MAX_APP_CMD_LENGTH)
-    {
-        return 1;
-    }
-
-    if(!f_exist(path))
-    {
-        return 1;
-    }
-
-    return 0;
+    return config_is_file_updated(app_state.ini_file, app_state.ini_last_modified_time);
 }
 
 int set_ini_file(char *path)
 {
-    if(check_ini_file(path))
+    if(config_validate_file(path))
     {
         LOGE("Invalid path");
         return 1;
@@ -171,107 +160,6 @@ int set_ini_file(char *path)
 
     snprintf(app_state.ini_file, MAX_APP_CMD_LENGTH, "%s", path);
     LOGD("INI file set to: %s", app_state.ini_file);
-    return 0;
-}
-
-static int handler(void *user, const char *section, const char *name, const char *value)
-{
-    (void)(user);
-    static char last_section[MAX_APP_NAME_LENGTH] = {0};
-    const char *app_prefix = "app:";
-
-    // New section detected
-    if (strcmp(section, last_section) != 0) {
-        if (strncmp(section, app_prefix, strlen(app_prefix)) == 0) {
-            if (app_state.app_count < MAX_APPS) {
-                const char *app_name = section + strlen(app_prefix);
-                if (*app_name == '\0') {
-                    LOGE("Empty app name in section header: [%s]", section);
-                    return 0; // Error
-                }
-                strncpy(apps[app_state.app_count].name, app_name, MAX_APP_NAME_LENGTH - 1);
-                apps[app_state.app_count].name[MAX_APP_NAME_LENGTH - 1] = '\0';
-                app_state.app_count++;
-            } else {
-                LOGW("MAX_APPS (%d) reached. Ignoring section [%s]", MAX_APPS, section);
-            }
-        }
-        strncpy(last_section, section, sizeof(last_section) - 1);
-        last_section[sizeof(last_section) - 1] = '\0';
-    }
-
-    // Find current app index
-    int index = -1;
-    if (strncmp(section, app_prefix, strlen(app_prefix)) == 0) {
-        const char *app_name = section + strlen(app_prefix);
-        for (int i = 0; i < app_state.app_count; i++) {
-            if (strcmp(apps[i].name, app_name) == 0) {
-                index = i;
-                break;
-            }
-        }
-    }
-
-    // Process key-value pairs
-    if (strcmp(section, "processWatchdog") == 0) {
-        if (strcmp(name, "udp_port") == 0) {
-            if (!parse_int(value, 1, 65535, &app_state.udp_port)) {
-                LOGE("Invalid UDP port: %s", value);
-                return 0;
-            }
-        }
-    } else if (index != -1) { // This is an app section we are tracking
-        if (strcmp(name, "start_delay") == 0) {
-            if (!parse_int(value, 0, INT_MAX, &apps[index].start_delay)) {
-                LOGE("Invalid start_delay for app %s: %s", apps[index].name, value);
-                return 0;
-            }
-        } else if (strcmp(name, "heartbeat_delay") == 0) {
-            if (!parse_int(value, 0, INT_MAX, &apps[index].heartbeat_delay)) {
-                LOGE("Invalid heartbeat_delay for app %s: %s", apps[index].name, value);
-                return 0;
-            }
-        } else if (strcmp(name, "heartbeat_interval") == 0) {
-            if (!parse_int(value, 0, INT_MAX, &apps[index].heartbeat_interval)) {
-                LOGE("Invalid heartbeat_interval for app %s: %s", apps[index].name, value);
-                return 0;
-            }
-        } else if (strcmp(name, "cmd") == 0) {
-            snprintf(apps[index].cmd, MAX_APP_CMD_LENGTH, "%s", value);
-            if (strlen(value) >= MAX_APP_CMD_LENGTH) {
-                LOGE("Invalid cmd for app %s - longer than %d charachters", apps[index].name, MAX_APP_CMD_LENGTH);
-                return 0;
-            }
-        }
-    }
-
-    return 1;
-}
-
-int read_ini_file()
-{
-    memset(apps, 0, sizeof(apps));
-    app_state.app_count = 0;
-    app_state.uptime = get_uptime();
-    app_state.udp_port = UDP_PORT;
-
-    // ini_file could have already set by set_ini_file() earlier
-    if(check_ini_file(app_state.ini_file))
-    {
-        LOGD("Using default ini file %s", INI_FILE);
-        set_ini_file(INI_FILE);
-    }
-
-    LOGD("Reading ini file %s", app_state.ini_file);
-
-    if(ini_parse(app_state.ini_file, handler, NULL) < 0)
-    {
-        LOGE("Failed to parse INI file %s", app_state.ini_file);
-        return 1;
-    }
-
-    LOGD("%d processes have found in the ini file %s", app_state.app_count, app_state.ini_file);
-    app_state.ini_last_modified_time = file_modified_time(app_state.ini_file);
     return 0;
 }
 
