@@ -324,6 +324,18 @@ A `Makefile` is included to compile the Process Watchdog application.
 make
 ```
 
+## Building with CMake
+
+To build the project with CMake, you need to have CMake and GTest installed.
+
+    ```bash
+    mkdir build
+    cd build
+    cmake ..
+    make
+    ./test/unit_tests
+    ```
+
 ## Running the Application
 Use the provided `run.sh` script to start the Process Watchdog application. This script includes a mechanism to restart the watchdog itself if it crashes, providing an additional level of protection.
 
