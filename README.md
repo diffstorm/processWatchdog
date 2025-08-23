@@ -352,8 +352,8 @@ Use the provided `run.sh` script to start the Process Watchdog application. This
 Or just `./run.sh &` which is recommended.
 
 ## TODO
-- Redesign the apps.c with DAO pattern
-- Add CPU & RAM usage to the statistics
+- [DONE]Redesign the apps.c with DAO pattern
+- [DONE]Add CPU & RAM usage to the statistics
 - Create easy-to-use heartbeat libraries
 - Enable commands over UDP
 - Enable remote syslog server reporting

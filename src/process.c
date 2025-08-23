@@ -32,26 +32,26 @@
 
 bool process_is_running(int app_index)
 {
-    Application_t *apps = apps_get_array();
+    int pid = get_app_pid(app_index);
 
-    if(apps[app_index].pid <= 0)
+    if(pid <= 0)
     {
         return false;
     }
 
     // Check if the application is running
-    if(kill(apps[app_index].pid, 0) == 0)
+    if(kill(pid, 0) == 0)
     {
         return true;  // Process is running
     }
     else if(errno == EPERM)
     {
-        LOGE("No permission to check if process %s is running : %s", apps[app_index].name, strerror(errno));
+        LOGE("No permission to check if process %s is running : %s", get_app_name(app_index), strerror(errno));
         return true;
     }
     else
     {
-        LOGD("Process %s is not running : %s", apps[app_index].name, strerror(errno));
+        LOGD("Process %s is not running : %s", get_app_name(app_index), strerror(errno));
     }
 
     return false;

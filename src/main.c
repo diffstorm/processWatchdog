@@ -136,7 +136,7 @@ extern char *optarg;
 extern int opterr, optind;
 
 #define APPNAME     basename(argv[0])
-#define VERSION     "1.1.0"
+#define VERSION     "1.2.0"
 #define OPTSTR      "i:v:t:h"
 #define USAGE_FMT   "%s -i <file.ini> [-v] [-h] [-t testname]\n"
 
@@ -301,7 +301,7 @@ int main(int argc, char *argv[])
     // Read statistics
     for(int i = 0; i < get_app_count(); i++)
     {
-        stats_read_from_file(i);
+        stats_read_from_file(i, get_app_name(i));
     }
 
     // data buffer
@@ -346,11 +346,17 @@ int main(int argc, char *argv[])
         {
             if(process_is_started(i))
             {
+                // Update resource usage stats (1 min)
+                if((get_uptime() % 60) == 0 && process_is_running(i))
+                {
+                    stats_update_resource_usage(i, get_app_pid(i));
+                }
+
                 // Update stats files periodically (15 mins)
                 if((get_uptime() % (15 * 60)) == 0)
                 {
-                    stats_write_to_file(i);
-                    stats_print_to_file(i);
+                    stats_write_to_file(i, get_app_name(i));
+                    stats_print_to_file(i, get_app_name(i));
                 }
 
                 if(!process_is_running(i))
@@ -435,8 +441,8 @@ int main(int argc, char *argv[])
     for(int i = 0; i < get_app_count(); i++)
     {
         // Update stats files
-        stats_write_to_file(i);
-        stats_print_to_file(i);
+        stats_write_to_file(i, get_app_name(i));
+        stats_print_to_file(i, get_app_name(i));
         // Kill running applications
         process_kill(i);
 

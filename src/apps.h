@@ -115,6 +115,14 @@ int get_app_count();
 char *get_app_name(int i);
 
 /**
+    @brief Gets the process ID of the application at the specified index.
+
+    @param i Index of the application.
+    @return Process ID of the application.
+*/
+int get_app_pid(int i);
+
+/**
     @brief Gets the UDP port number specified in the ini file.
 
     @return UDP port number.

@@ -110,6 +110,11 @@ char *get_app_name(int i)
     return apps[i].name;
 }
 
+int get_app_pid(int i)
+{
+    return apps[i].pid;
+}
+
 int get_udp_port(void)
 {
     return app_state.udp_port;

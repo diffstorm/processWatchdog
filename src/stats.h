@@ -73,21 +73,32 @@ void stats_update_first_heartbeat_time(int index, time_t heartbeatTime);
     @brief Prints the statistics to a human-readable file.
 
     @param index Index of the application.
+    @param app_name Name of the application for filename generation.
 */
-void stats_print_to_file(int index);
+void stats_print_to_file(int index, const char *app_name);
 
 /**
     @brief Writes the statistics to a raw file for later reading.
 
     @param index Index of the application.
+    @param app_name Name of the application for filename generation.
 */
-void stats_write_to_file(int index);
+void stats_write_to_file(int index, const char *app_name);
 
 /**
     @brief Reads the statistics from a raw file to continue from where it left.
 
     @param index Index of the application.
+    @param app_name Name of the application for filename generation.
 */
-void stats_read_from_file(int index);
+void stats_read_from_file(int index, const char *app_name);
+
+/**
+    @brief Updates CPU and memory usage statistics for the application.
+
+    @param index Index of the application.
+    @param pid Process ID of the application.
+*/
+void stats_update_resource_usage(int index, int pid);
 
 #endif // STATS_H
