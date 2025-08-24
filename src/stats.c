@@ -378,7 +378,7 @@ static void resetStatisticsFile(int index, const char *app_name)
 {
     if(stats[index].magic != STATS_MAGIC)
     {
-        LOGN("Statistic file %s has been reset - magic %X is %X", app_name, stats[index].magic, STATS_MAGIC);
+        LOGN("Statistics file %s has been reset - magic %X is %X", app_name, stats[index].magic, STATS_MAGIC);
         memset(&stats[index], 0, sizeof(Statistic_t));
         stats[index].magic = STATS_MAGIC;
     }

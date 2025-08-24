@@ -217,7 +217,7 @@ static int config_ini_handler(void *user, const char *section, const char *name,
 
             if(strlen(value) >= MAX_APP_CMD_LENGTH)
             {
-                LOGE("Invalid cmd for app %s - longer than %d charachters", apps[index].name, MAX_APP_CMD_LENGTH);
+                LOGE("Invalid cmd for app %s - longer than %d characters", apps[index].name, MAX_APP_CMD_LENGTH);
                 return 0;
             }
         }

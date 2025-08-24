@@ -42,7 +42,7 @@ int udp_start(int *socketfd, int port)
 
     if(*socketfd == -1)
     {
-        LOGE("socket could not create");
+        LOGE("socket could not be created");
         return 1;
     }
 

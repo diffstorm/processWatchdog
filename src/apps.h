@@ -26,7 +26,7 @@
 
 /**
     @file apps.h
-    @brief Functions and structures for managing processes and applications defined in an ini config file.
+    @brief Functions and structures for managing processes and applications defined in an INI config file.
 */
 
 // Constants

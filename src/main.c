@@ -197,11 +197,11 @@ void usage(char *progname, int opt)
 void help(char *progname)
 {
     fprintf(stderr, GREEN "\nBrief:\n" RESET);
-    fprintf(stderr, "%s starts the applications given in the ini "
+    fprintf(stderr, "%s starts the applications given in the INI "
             "file in the same directory\n", progname);
     fprintf(stderr, "Restarts them when they crash or exit\n");
-    fprintf(stderr, "The applications must send their pid numbers "
-            "periodically to the UDP port in the ini file "
+    fprintf(stderr, "The applications must send their PID numbers "
+            "periodically to the UDP port in the INI file "
             "as a string command p<pid>, "
             "otherwise the %s will restart them.\n", progname);
     fprintf(stderr, GREEN "\nFile commands:\n" RESET

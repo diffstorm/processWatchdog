@@ -79,7 +79,7 @@ typedef uint64_t clk_t;
 /* functions */
 
 /**
-    @brief Copies a string with pointer of end position.
+    @brief Copies a string with a pointer to the end position.
 
     @param s1 Destination string.
     @param s2 Source string.

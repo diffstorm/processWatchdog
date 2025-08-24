@@ -36,7 +36,7 @@
 #define FILECMD_REBOOT      "wdtreboot" /**< Command to stop all apps and reboot the OS. */
 
 /**
-    @brief File commands for controlling application lifecycle based on an application's name specified in the ini file:
+    @brief File commands for controlling the application lifecycle based on an application's name specified in the INI file:
 
     @example for an application called "bot" or "Bot"
     - stopbot: Stops the application named "bot". It does not restart the application automatically. When the corresponding file is removed, the "bot" application will be started again.

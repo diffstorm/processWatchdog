@@ -46,7 +46,7 @@ bool process_is_running(int app_index)
     }
     else if(errno == EPERM)
     {
-        LOGE("No permission to check if process %s is running : %s", get_app_name(app_index), strerror(errno));
+        LOGE("No permission to check if process %s is running: %s", get_app_name(app_index), strerror(errno));
         return true;
     }
     else
