@@ -50,7 +50,7 @@ while kill -0 $pid 2>/dev/null && [ $(date +%s) -lt $end_time ]; do
     mem_sum=$(echo "$mem_sum + $mem_mb" | bc)
 
     # Per-second live print
-    printf "[LIVE] CPU=%.2f%% MEM=%.2fMB Threads=%s\n" "$cpu" "$mem_mb" "$threads"
+    # printf "[LIVE] CPU=%.2f%% MEM=%.2fMB Threads=%s\n" "$cpu" "$mem_mb" "$threads"
 
     now=$(date +%s)
     # Every 60s print summary
