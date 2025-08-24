@@ -2,7 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.2.0] - 2025-08-17
+## [1.2.0] - 2025-08-23
+
+### Added
+- Monitor and log CPU and memory usage for each application.
+
+## [1.1.0] - 2025-08-17
 
 ### Added
 - CMake support for building the project.

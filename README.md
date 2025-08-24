@@ -20,6 +20,7 @@ This application is particularly useful in environments where multiple processes
 - Provides a centralized platform for managing multiple processes, enhancing operational efficiency.
 - Provides file command interface to manually start, stop, or restart individual processes or the entire watchdog system or even a Linux reboot.
 - Generates statistics log files to track the status and history of each managed process.
+- Monitors CPU and memory usage of each process.
 
 ## Requirements
 - If `heartbeat_interval > 0` : Processes managed by Process Watchdog must periodically send their heartbeat messages to prevent being restarted.
@@ -352,8 +353,6 @@ Use the provided `run.sh` script to start the Process Watchdog application. This
 Or just `./run.sh &` which is recommended.
 
 ## TODO
-- [DONE]Redesign the apps.c with DAO pattern
-- [DONE]Add CPU & RAM usage to the statistics
 - Create easy-to-use heartbeat libraries
 - Enable commands over UDP
 - Enable remote syslog server reporting
