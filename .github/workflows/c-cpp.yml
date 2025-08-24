@@ -22,6 +22,7 @@ jobs:
     - name: Run watchdog
       run: |
         echo "Running processWatchdog..."
+        chmod +x monitor.sh
         ./monitor.sh 2 1 5 3 ./processWatchdog > release_watchdog_stdout.log 2> release_watchdog_stderr.log
         echo "Standard Output:"
         cat release_watchdog_stdout.log
