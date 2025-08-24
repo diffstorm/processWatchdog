@@ -1,10 +1,11 @@
 #include "gtest/gtest.h"
 
 extern "C" {
-    #include "server.h"
+#include "server.h"
 }
 
-TEST(ServerTest, UdpStart) {
+TEST(ServerTest, UdpStart)
+{
     int socket;
     int port = 12345;
     ASSERT_EQ(udp_start(&socket, port), 0);

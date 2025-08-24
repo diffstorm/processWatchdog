@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0] - 2025-08-24
+
+### Added
+- Flexible periodic reboot feature. Supports daily time (`HH:MM`) and intervals in hours (`h`), days (`d`), weeks (`w`), and months (`m`).
+
 ## [1.2.0] - 2025-08-23
 
 ### Added

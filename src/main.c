@@ -136,7 +136,7 @@ extern char *optarg;
 extern int opterr, optind;
 
 #define APPNAME     basename(argv[0])
-#define VERSION     "1.2.0"
+#define VERSION     "1.3.0"
 #define OPTSTR      "i:v:t:h"
 #define USAGE_FMT   "%s -i <file.ini> [-v] [-h] [-t testname]\n"
 
@@ -214,6 +214,7 @@ void help(char *progname)
     fprintf(stderr, GREEN "\nINI File example config:\n" RESET
             "[processWatchdog]\n"
             "udp_port = 12345\n"
+            "periodic_reboot = OFF\n"
             "\n"
             "[app:Communicator]\n"
             "start_delay = 10\n"
@@ -291,6 +292,7 @@ int main(int argc, char *argv[])
     }
 
     LOGN("%s started v:%s", APPNAME, VERSION);
+    time_t start_time = time(NULL);
 
     // Read config
     if(read_ini_file())
@@ -320,6 +322,7 @@ int main(int argc, char *argv[])
     // Loop here until exit signal arrived
     while(main_alive)
     {
+        long uptime = time(NULL) - start_time;
         // Poll UDP messages
         length = sizeof(data) - 1;
 
@@ -347,13 +350,13 @@ int main(int argc, char *argv[])
             if(process_is_started(i))
             {
                 // Update resource usage stats (1 min)
-                if((get_uptime() % 60) == 0 && process_is_running(i))
+                if((uptime % 60) == 0 && process_is_running(i))
                 {
                     stats_update_resource_usage(i, get_app_pid(i));
                 }
 
                 // Update stats files periodically (15 mins)
-                if((get_uptime() % (15 * 60)) == 0)
+                if((uptime % (15 * 60)) == 0)
                 {
                     stats_write_to_file(i, get_app_name(i));
                     stats_print_to_file(i, get_app_name(i));
@@ -420,6 +423,45 @@ int main(int argc, char *argv[])
             return_code = EXIT_REBOOT;
         }
 
+        // Check for periodic reboot (1 min)
+        if(apps_get_state()->periodic_reboot != REBOOT_MODE_DISABLED && (uptime % 60 == 0))
+        {
+            switch(apps_get_state()->periodic_reboot)
+            {
+                case REBOOT_MODE_DAILY_TIME:
+                {
+                    time_t now = time(NULL);
+                    struct tm *tm_now = localtime(&now);
+
+                    if(tm_now->tm_hour == apps_get_state()->reboot_params.daily_time.hour && tm_now->tm_min == apps_get_state()->reboot_params.daily_time.min)
+                    {
+                        LOGN("Periodic reboot triggered (daily time)");
+                        main_alive = false;
+                        return_code = EXIT_REBOOT;
+                    }
+
+                    break;
+                }
+
+                case REBOOT_MODE_INTERVAL:
+                {
+                    long uptime_minutes = uptime / 60;
+
+                    if(uptime_minutes > 0 && uptime_minutes % apps_get_state()->reboot_params.interval_minutes == 0)
+                    {
+                        LOGN("Periodic reboot triggered (interval)");
+                        main_alive = false;
+                        return_code = EXIT_REBOOT;
+                    }
+
+                    break;
+                }
+
+                default:
+                    break;
+            }
+        }
+
 #if 0 // feature disabled
 
         // Check if ini updated and re-read
@@ -427,6 +469,7 @@ int main(int argc, char *argv[])
         {
             if(read_ini_file())
             {
+                // TODO: attaching to existing PIDs to prevent restarting the processes
                 exit(EXIT_RESTART);
             }
         }

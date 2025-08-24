@@ -59,6 +59,13 @@ typedef struct
     time_t last_heartbeat; /**< Time when the last heartbeat was received from the application. */
 } Application_t;
 
+typedef enum
+{
+    REBOOT_MODE_DISABLED,
+    REBOOT_MODE_DAILY_TIME,
+    REBOOT_MODE_INTERVAL
+} RebootMode_t;
+
 typedef struct
 {
     int app_count; /**< Total number of applications found in the ini file. */
@@ -66,6 +73,16 @@ typedef struct
     char ini_file[MAX_APP_CMD_LENGTH]; /**< Path to the ini file. */
     time_t ini_last_modified_time; /**< Last modified time of the ini file. */
     time_t uptime; /**< System uptime in seconds. */
+    RebootMode_t periodic_reboot; /**< Periodic reboot mode. */
+    union
+    {
+        struct
+        {
+            int hour;
+            int min;
+        } daily_time;
+        long interval_minutes;
+    } reboot_params; /**< Periodic reboot parameters. */
 } AppState_t;
 
 // Function prototypes

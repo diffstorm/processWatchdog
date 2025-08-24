@@ -28,6 +28,8 @@
 #include <errno.h>
 #include <limits.h>
 
+#define MAX_REBOOT_MINUTES 525600 // 1 year in minutes
+
 static time_t config_get_file_modified_time(const char *path)
 {
     struct stat attr;
@@ -98,6 +100,88 @@ static int config_ini_handler(void *user, const char *section, const char *name,
             {
                 LOGE("Invalid UDP port: %s", value);
                 return 0;
+            }
+        }
+        else if(strcmp(name, "periodic_reboot") == 0)
+        {
+            state->periodic_reboot = REBOOT_MODE_DISABLED;
+            int hour, min;
+
+            if(sscanf(value, "%d:%d", &hour, &min) == 2)
+            {
+                if(hour >= 0 && hour <= 23 && min >= 0 && min <= 59)
+                {
+                    state->periodic_reboot = REBOOT_MODE_DAILY_TIME;
+                    state->reboot_params.daily_time.hour = hour;
+                    state->reboot_params.daily_time.min = min;
+                    LOGN("Periodic reboot set to daily at %02d:%02d", hour, min);
+                }
+            }
+            else
+            {
+                char unit = 'd';
+                long interval = 0;
+                char *endptr;
+                interval = strtol(value, &endptr, 10);
+
+                if(endptr != value)
+                {
+                    if(*endptr != '\0')
+                    {
+                        unit = *endptr;
+                    }
+
+                    long multiplier = 0;
+
+                    switch(unit)
+                    {
+                        case 'h':
+                        case 'H':
+                            multiplier = 60;
+                            break;
+
+                        case 'd':
+                        case 'D':
+                            multiplier = 24 * 60;
+                            break;
+
+                        case 'w':
+                        case 'W':
+                            multiplier = 7 * 24 * 60;
+                            break;
+
+                        case 'm':
+                        case 'M':
+                            multiplier = 30 * 24 * 60;
+                            break;
+
+                        default:
+                            break;
+                    }
+
+                    if(multiplier > 0 && interval > 0)
+                    {
+                        if(interval > LONG_MAX / multiplier)
+                        {
+                            LOGE("Reboot interval value is too large and would cause an overflow.");
+                        }
+                        else
+                        {
+                            long interval_minutes = interval * multiplier;
+
+                            if(interval_minutes <= MAX_REBOOT_MINUTES)
+                            {
+                                state->periodic_reboot = REBOOT_MODE_INTERVAL;
+                                state->reboot_params.interval_minutes = interval_minutes;
+                                LOGN("Periodic reboot set to an interval of %ld minutes.", interval_minutes);
+                            }
+                            else
+                            {
+                                LOGW("Reboot interval of %ld minutes is too long (max is %d minutes).", interval_minutes, MAX_REBOOT_MINUTES);
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -172,6 +256,7 @@ int config_parse_file(const char *ini_path, Application_t *apps, int max_apps, A
     state->app_count = 0;
     state->uptime = get_uptime();
     state->udp_port = UDP_PORT;
+    state->periodic_reboot = REBOOT_MODE_DISABLED;
     LOGD("Reading ini file %s", ini_path);
     // Prepare user data for the handler
     void *user_data[2] = { apps, state };

@@ -21,6 +21,7 @@ This application is particularly useful in environments where multiple processes
 - Provides file command interface to manually start, stop, or restart individual processes or the entire watchdog system or even a Linux reboot.
 - Generates statistics log files to track the status and history of each managed process.
 - Monitors CPU and memory usage of each process.
+- Supports periodic reboot of the host system.
 
 ## Requirements
 - If `heartbeat_interval > 0` : Processes managed by Process Watchdog must periodically send their heartbeat messages to prevent being restarted.
@@ -64,6 +65,13 @@ cmd = /usr/bin/python test_child.py 4 noheartbeat
 
 ### Fields
 - `udp_port` : The UDP port to expect heartbeats.
+- `periodic_reboot`: Optional. Specifies the periodic reboot schedule. The feature is disabled if the key is not found or the value is invalid. The supported formats are:
+    - Daily Specific Time: A specific time in `HH:MM` format (e.g., `04:00` for a reboot at 4:00 AM every day).
+    - Hourly Interval: An integer value followed by `h` (e.g., `6h` for every 6 hours).
+    - Daily Interval: An integer value followed by `d` (e.g., `5d` for every 5 days).
+    - Weekly Interval: An integer value followed by `w` (e.g., `2w` for every 2 weeks).
+    - Monthly Interval: An integer value followed by `m` (e.g., `3m` for every 3 months).
+    - Default to Days: If no unit is provided, the value is treated as days (e.g., `7` is equivalent to `7d`).
 - `[app:<AppName>]` : Each application to be monitored should have its own section prefixed with `app:`. `<AppName>` will be used as the name of the application.
 - `start_delay` : Delay in seconds before starting the application.
 - `heartbeat_delay` : Time in seconds to wait before expecting a heartbeat from the application.
@@ -302,6 +310,15 @@ Minimum first heartbeat time: 104 seconds
 Average heartbeat time: 102 seconds
 Maximum heartbeat time: 110 seconds
 Minimum heartbeat time: 102 seconds
+Resource sample count: 190
+Current CPU usage: 0.50%
+Maximum CPU usage: 0.80%
+Minimum CPU usage: 0.00%
+Average CPU usage: 0.40%
+Current memory usage: 11.62 MB
+Maximum memory usage: 11.88 MB
+Minimum memory usage: 11.38 MB
+Average memory usage: 11.74 MB
 Magic: A50FAA55
 ```
 
@@ -353,10 +370,10 @@ Use the provided `run.sh` script to start the Process Watchdog application. This
 Or just `./run.sh &` which is recommended.
 
 ## TODO
+- Attaching to already running processes
 - Create easy-to-use heartbeat libraries
 - Enable commands over UDP
 - Enable remote syslog server reporting
-- Add periodic reboot feature
 - Add periodic server health reporting
 - Add IPC and TCP support
 - Add json support
