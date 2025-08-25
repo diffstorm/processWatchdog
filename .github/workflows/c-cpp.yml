@@ -6,25 +6,72 @@ on:
   pull_request:
     branches: [ "main" ]
 
+permissions:
+  contents: write   # required to push tags & create releases
+
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v4
-    - name: Clean build
-      run: make clean || true
-    
-    - name: Build (Release)
-      run: make BUILD_TYPE=release
-    
-    - name: Run watchdog
-      run: |
-        echo "Running processWatchdog..."
-        chmod +x monitor.sh
-        ./monitor.sh 2 1 5 3 600 ./processWatchdog > release_watchdog_stdout.log 2> release_watchdog_stderr.log
-        echo "Standard Output:"
-        cat release_watchdog_stdout.log
-        echo "Standard Error:"
-        cat release_watchdog_stderr.log
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # ensure full history & tags are available
+
+      - name: Clean build
+        run: make clean || true
+
+      - name: Build (Release)
+        run: make BUILD_TYPE=release
+
+      - name: Run watchdog
+        run: |
+          echo "Running processWatchdog..."
+          chmod +x monitor.sh
+          ./monitor.sh 2 1 5 3 600 ./processWatchdog > release_watchdog_stdout.log 2> release_watchdog_stderr.log
+          echo "Standard Output:"
+          cat release_watchdog_stdout.log
+          echo "Standard Error:"
+          cat release_watchdog_stderr.log
+
+      # --- Release automation (only runs on push to main) ---
+
+      - name: Extract version from main.c
+        id: get_version
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          VERSION=$(grep -oP '(?<=#define VERSION\s+")[^"]+' main.c || true)
+          if [ -z "$VERSION" ]; then
+            echo "Failed to extract VERSION from main.c"; exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Detected version: $VERSION"
+
+      - name: Check if tag exists remotely
+        id: check_tag
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git fetch --tags --force
+          TAG="v${{ steps.get_version.outputs.version }}"
+          if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q "${TAG}$"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${TAG} already exists."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Tag ${TAG} does not exist."
+          fi
+
+      - name: Create tag
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.check_tag.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          TAG="v${{ steps.get_version.outputs.version }}"
+          git tag "${TAG}"
+          git push origin "${TAG}"
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.check_tag.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.get_version.outputs.version }}
+          generate_release_notes: true
