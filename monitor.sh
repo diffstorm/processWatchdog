@@ -21,7 +21,7 @@ sleep 5
 # Cleanup handler
 cleanup() {
     echo "Cleaning up... killing $pid"
-    kill $pid 2>/dev/null
+    kill -SIGUSR1 $pid 2>/dev/null
 }
 trap cleanup EXIT
 

@@ -371,7 +371,6 @@ Or just `./run.sh &` which is recommended.
 
 ## TODO
 - Attaching to already running processes
-- Create releases
 - Enable commands over UDP
 - Enable remote syslog server reporting
 - Add periodic server health reporting
