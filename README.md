@@ -371,15 +371,12 @@ Or just `./run.sh &` which is recommended.
 
 ## TODO
 - Attaching to already running processes
-- Create easy-to-use heartbeat libraries
+- Create releases
 - Enable commands over UDP
 - Enable remote syslog server reporting
 - Add periodic server health reporting
 - Add IPC and TCP support
 - Add json support
-- Add remote Telnet console
-- Add config wizard
-- Add multiplatform GUI
 
 ## :snowman: Author
 Eray Öztürk ([@diffstorm](https://github.com/diffstorm))
