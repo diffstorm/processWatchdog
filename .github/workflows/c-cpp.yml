@@ -39,7 +39,7 @@ jobs:
         id: get_version
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          VERSION=$(grep '#define VERSION' main.c | sed -E 's/.*"([^"]+)".*/\1/')
+          VERSION=$(grep '#define VERSION' src/main.c | sed -E 's/.*"([^"]+)".*/\1/')
           if [ -z "$VERSION" ]; then
             echo "Failed to extract VERSION from main.c"; exit 1
           fi
