@@ -352,7 +352,8 @@ int main(int argc, char *argv[])
                 // Update resource usage stats (1 min)
                 if((uptime % 60) == 0 && process_is_running(i))
                 {
-                    stats_update_resource_usage(i, get_app_pid(i));
+                    stats_update_cpu_usage(i, get_app_pid(i));
+                    stats_update_memory_usage(i, get_app_pid(i));
                 }
 
                 // Update stats files periodically (15 mins)

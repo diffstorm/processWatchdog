@@ -50,11 +50,12 @@ typedef struct
     size_t heartbeat_count; /**< Number of heartbeats received. */
     size_t heartbeat_count_old; /**< Number of old heartbeats received. */
     size_t heartbeat_reset_count; /**< Number of restarts due to late heartbeats. */
+    size_t avg_heartbeat_count_old; /**< Average heartbeat count before crashes/resets. */
     // CPU and Memory usage statistics
-    double current_cpu_percent; /**< Current CPU usage percentage. */
-    double max_cpu_percent; /**< Maximum CPU usage percentage. */
-    double min_cpu_percent; /**< Minimum CPU usage percentage. */
-    double avg_cpu_percent; /**< Average CPU usage percentage. */
+    float current_cpu_percent; /**< Current CPU usage percentage. */
+    float max_cpu_percent; /**< Maximum CPU usage percentage. */
+    float min_cpu_percent; /**< Minimum CPU usage percentage. */
+    float avg_cpu_percent; /**< Average CPU usage percentage. */
     size_t current_memory_kb; /**< Current memory usage in KB. */
     size_t max_memory_kb; /**< Maximum memory usage in KB. */
     size_t min_memory_kb; /**< Minimum memory usage in KB. */
@@ -65,77 +66,136 @@ typedef struct
 
 static Statistic_t stats[MAX_APPS]; // statistics for the apps
 
+typedef struct
+{
+    unsigned long long prev_process_time;
+    struct timespec    prev_ts;
+    int initialized;
+} CpuState_t;
+
+static CpuState_t cpustates[MAX_APPS] = {0}; // CPU utilization for the apps
+
 /**
-    @brief Reads CPU usage percentage for a specific process from /proc/[pid]/stat
-    @param pid Process ID
+    @brief Reads instantaneous CPU usage percentage for a specific process.
+          Works regardless of sampling interval. Can exceed 100% on multicore systems.
+    @param index Index into cpustates[] array
+    @param pid   Process ID
     @return CPU usage percentage, or -1.0 on error
 */
-static double get_process_cpu_usage(int pid)
+static float get_process_cpu_usage(int index, int pid)
 {
-    static unsigned long long prev_total_time = 0;
-    static unsigned long long prev_process_time = 0;
-    static int prev_pid = -1;
-    char stat_path[64];
+    char stat_path[48];
+    char buf[512];
     snprintf(stat_path, sizeof(stat_path), "/proc/%d/stat", pid);
     FILE *fp = fopen(stat_path, "r");
 
     if(!fp)
     {
-        return -1.0;
+        LOGE("Failed to open %s", stat_path);
+        return -1.0f;
     }
 
-    unsigned long long utime, stime, cutime, cstime;
-
-    // Skip first 13 fields, then read utime, stime, cutime, cstime
-    if(fscanf(fp, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %llu %llu %llu %llu",
-              &utime, &stime, &cutime, &cstime) != 4)
+    if(!fgets(buf, sizeof(buf), fp))
     {
         fclose(fp);
-        return -1.0;
+        LOGE("Failed to read line from %s", stat_path);
+        return -1.0f;
     }
 
     fclose(fp);
-    // Get system total time from /proc/stat
-    fp = fopen("/proc/stat", "r");
+    // find end of comm field (inside parentheses)
+    char *paren = strrchr(buf, ')');
 
-    if(!fp)
+    if(!paren)
     {
-        return -1.0;
+        LOGE("Failed to find closing parenthesis in stat line");
+        return -1.0f;
     }
 
-    unsigned long long user, nice, system, idle, iowait, irq, softirq, steal;
+    // tokenize remaining fields after ") "
+    char *saveptr;
+    char *token = strtok_r(paren + 2, " ", &saveptr);
+    int field = 3; // already counted pid(1), comm(2), state(3)
+    unsigned long long utime = 0, stime = 0, cutime = 0, cstime = 0;
 
-    if(fscanf(fp, "cpu %llu %llu %llu %llu %llu %llu %llu %llu",
-              &user, &nice, &system, &idle, &iowait, &irq, &softirq, &steal) != 8)
+    while(token)
     {
-        fclose(fp);
-        return -1.0;
-    }
+        field++;
 
-    fclose(fp);
-    unsigned long long total_time = user + nice + system + idle + iowait + irq + softirq + steal;
-    unsigned long long process_time = utime + stime + cutime + cstime;
-
-    // Calculate CPU percentage only if we have previous values and same PID
-    if(prev_pid == pid && prev_total_time > 0)
-    {
-        unsigned long long total_diff = total_time - prev_total_time;
-        unsigned long long process_diff = process_time - prev_process_time;
-
-        if(total_diff > 0)
+        if(field == 14)
         {
-            double cpu_percent = (100.0 * process_diff) / total_diff;
-            prev_total_time = total_time;
-            prev_process_time = process_time;
-            return cpu_percent;
+            utime  = strtoull(token, NULL, 10);
         }
+        else if(field == 15)
+        {
+            stime  = strtoull(token, NULL, 10);
+        }
+        else if(field == 16)
+        {
+            cutime = strtoull(token, NULL, 10);
+        }
+        else if(field == 17)
+        {
+            cstime = strtoull(token, NULL, 10);
+            break;
+        }
+
+        token = strtok_r(NULL, " ", &saveptr);
     }
 
-    // Store current values for next calculation
-    prev_pid = pid;
-    prev_total_time = total_time;
-    prev_process_time = process_time;
-    return 0.0; // First measurement, return 0
+    unsigned long long process_time = utime + stime + cutime + cstime;
+    LOGD("PID=%d utime=%llu stime=%llu cutime=%llu cstime=%llu total_process_time=%llu",
+         pid, utime, stime, cutime, cstime, process_time);
+    long ticks_per_sec = sysconf(_SC_CLK_TCK);
+    //long nprocs        = sysconf(_SC_NPROCESSORS_ONLN);
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    CpuState_t *st = &cpustates[index];
+
+    /*  if(nprocs <= 0)
+        {
+        nprocs = 1;
+        }*/
+
+    if(st->initialized)
+    {
+        float elapsed = (float)(now.tv_sec - st->prev_ts.tv_sec) +
+                        (float)(now.tv_nsec - st->prev_ts.tv_nsec) / 1e9f;
+
+        if(elapsed < 1e-6f)
+        {
+            // avoid division by near-zero
+            return -1.0f;
+        }
+
+        unsigned long long diff = process_time - st->prev_process_time;
+
+        if(process_time < st->prev_process_time)
+        {
+            // counter wrapped or PID restarted, reset baseline
+            st->prev_process_time = process_time;
+            st->prev_ts = now;
+            LOGD("Process time decreased, resetting baseline for PID=%d", pid);
+            return -1.0f;
+        }
+
+        float cpu_sec = (float)diff / (float)ticks_per_sec;
+        LOGD("PID=%d diff=%llu ticks_per_sec=%ld cpu_sec=%.6f elapsed=%.6f",
+             pid, diff, ticks_per_sec, cpu_sec, elapsed);
+        st->prev_process_time = process_time;
+        st->prev_ts = now;
+        float percent = (cpu_sec / elapsed) * 100.0f;
+        LOGD("PID=%d CPU usage=%.2f%% (can exceed 100%% on multicore)",
+             pid, percent);
+        return percent;
+    }
+
+    // first call for this pid/index
+    st->prev_process_time = process_time;
+    st->prev_ts = now;
+    st->initialized = 1;
+    LOGD("First call for PID=%d, initializing baseline", pid);
+    return -1.0f;
 }
 
 /**
@@ -145,7 +205,7 @@ static double get_process_cpu_usage(int pid)
 */
 static size_t get_process_memory_usage(int pid)
 {
-    char status_path[64];
+    char status_path[48];
     snprintf(status_path, sizeof(status_path), "/proc/%d/status", pid);
 
     if(!f_exist(status_path))
@@ -182,6 +242,28 @@ static void clearHeartbeatCount(int index)
     stats[index].heartbeat_count = 0;
 }
 
+static void updateHeartbeatCountAverage(int index)
+{
+    // Update average heartbeat count old when process crashes or gets reset
+    if(stats[index].heartbeat_count_old > 0)
+    {
+        size_t total_events = stats[index].crash_count + stats[index].heartbeat_reset_count;
+
+        if(total_events == 1)
+        {
+            // First crash/reset
+            stats[index].avg_heartbeat_count_old = stats[index].heartbeat_count_old;
+        }
+        else if(total_events > 1)
+        {
+            // Update running average
+            stats[index].avg_heartbeat_count_old =
+                ((stats[index].avg_heartbeat_count_old * (total_events - 1)) +
+                 stats[index].heartbeat_count_old) / total_events;
+        }
+    }
+}
+
 void stats_started_at(int index)
 {
     stats[index].started_at = time(NULL);
@@ -193,6 +275,7 @@ void stats_crashed_at(int index)
 {
     stats[index].crashed_at = time(NULL);
     stats[index].crash_count++;
+    updateHeartbeatCountAverage(index);
     clearHeartbeatCount(index);
 }
 
@@ -200,6 +283,7 @@ void stats_heartbeat_reset_at(int index)
 {
     stats[index].heartbeat_reset_at = time(NULL);
     stats[index].heartbeat_reset_count++;
+    updateHeartbeatCountAverage(index);
     clearHeartbeatCount(index);
 }
 
@@ -241,31 +325,24 @@ void stats_update_first_heartbeat_time(int index, time_t heartbeatTime)
     }
 }
 
-void stats_update_resource_usage(int index, int pid)
+void stats_update_cpu_usage(int index, int pid)
 {
-    if(pid <= 0)
-    {
-        return; // Process not running
-    }
+    // Get current CPU usage
+    float cpu_percent = get_process_cpu_usage(index, pid);
 
-    // Get current CPU and memory usage
-    double cpu_percent = get_process_cpu_usage(pid);
-    size_t memory_kb = get_process_memory_usage(pid);
-
-    if(cpu_percent < 0.0)
+    if(cpu_percent < 0.0f)
     {
+        LOGD("Invalid CPU reading (%.2f%%) for PID=%d, skipping sample", cpu_percent, pid);
         return; // Error reading CPU usage
     }
 
-    // Update current values
+    // Update current CPU value
     stats[index].current_cpu_percent = cpu_percent;
-    stats[index].current_memory_kb = memory_kb;
-    stats[index].resource_sample_count++;
 
-    // Update CPU statistics
-    if(stats[index].resource_sample_count == 1)
+    // Initialize or update CPU statistics
+    if(stats[index].max_cpu_percent == 0.0f && stats[index].min_cpu_percent == 100.0f)
     {
-        // First sample
+        // First CPU sample or after reset
         stats[index].max_cpu_percent = cpu_percent;
         stats[index].min_cpu_percent = cpu_percent;
         stats[index].avg_cpu_percent = cpu_percent;
@@ -283,36 +360,50 @@ void stats_update_resource_usage(int index, int pid)
             stats[index].min_cpu_percent = cpu_percent;
         }
 
-        // Update average CPU
-        stats[index].avg_cpu_percent = ((stats[index].avg_cpu_percent * (stats[index].resource_sample_count - 1)) + cpu_percent) / stats[index].resource_sample_count;
+        // Use exponential moving average for CPU
+        float alpha = 0.1f; // Smoothing factor
+        stats[index].avg_cpu_percent = stats[index].avg_cpu_percent * (1.0f - alpha) + cpu_percent * alpha;
+    }
+}
+
+void stats_update_memory_usage(int index, int pid)
+{
+    // Get current memory usage
+    size_t memory_kb = get_process_memory_usage(pid);
+
+    if(memory_kb == 0)
+    {
+        LOGD("Failed to read memory usage for PID=%d", pid);
+        return; // Error reading memory usage
     }
 
-    // Update memory statistics
-    if(memory_kb > 0)
+    // Update current memory value
+    stats[index].current_memory_kb = memory_kb;
+    stats[index].resource_sample_count++;
+
+    // Initialize or update memory statistics
+    if(stats[index].resource_sample_count == 1 || stats[index].max_memory_kb == 0)
     {
-        if(stats[index].resource_sample_count == 1)
+        // First memory sample
+        stats[index].max_memory_kb = memory_kb;
+        stats[index].min_memory_kb = memory_kb;
+        stats[index].avg_memory_kb = memory_kb;
+    }
+    else
+    {
+        // Update max/min memory
+        if(memory_kb > stats[index].max_memory_kb)
         {
-            // First sample
             stats[index].max_memory_kb = memory_kb;
-            stats[index].min_memory_kb = memory_kb;
-            stats[index].avg_memory_kb = memory_kb;
         }
-        else
+
+        if(memory_kb < stats[index].min_memory_kb)
         {
-            // Update max/min memory
-            if(memory_kb > stats[index].max_memory_kb)
-            {
-                stats[index].max_memory_kb = memory_kb;
-            }
-
-            if(memory_kb < stats[index].min_memory_kb)
-            {
-                stats[index].min_memory_kb = memory_kb;
-            }
-
-            // Update average memory
-            stats[index].avg_memory_kb = ((stats[index].avg_memory_kb * (stats[index].resource_sample_count - 1)) + memory_kb) / stats[index].resource_sample_count;
+            stats[index].min_memory_kb = memory_kb;
         }
+
+        // Update average memory using running average
+        stats[index].avg_memory_kb = ((stats[index].avg_memory_kb * (stats[index].resource_sample_count - 1)) + memory_kb) / stats[index].resource_sample_count;
     }
 }
 
@@ -353,6 +444,7 @@ void stats_print_to_file(int index, const char *app_name)
     fprintf(fp, "Heartbeat reset count: %zu\n", stats[index].heartbeat_reset_count);
     fprintf(fp, "Heartbeat count: %zu\n", stats[index].heartbeat_count);
     fprintf(fp, "Heartbeat count old: %zu\n", stats[index].heartbeat_count_old);
+    fprintf(fp, "Average heartbeat count old: %zu\n", stats[index].avg_heartbeat_count_old);
     fprintf(fp, "Average first heartbeat time: %lld seconds\n", (long long)stats[index].avg_first_heartbeat_time);
     fprintf(fp, "Maximum first heartbeat time: %lld seconds\n", (long long)stats[index].max_first_heartbeat_time);
     fprintf(fp, "Minimum first heartbeat time: %lld seconds\n", (long long)stats[index].min_first_heartbeat_time);

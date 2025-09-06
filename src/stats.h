@@ -94,11 +94,19 @@ void stats_write_to_file(int index, const char *app_name);
 void stats_read_from_file(int index, const char *app_name);
 
 /**
-    @brief Updates CPU and memory usage statistics for the application.
+    @brief Updates CPU usage statistics for the application.
 
     @param index Index of the application.
     @param pid Process ID of the application.
 */
-void stats_update_resource_usage(int index, int pid);
+void stats_update_cpu_usage(int index, int pid);
+
+/**
+    @brief Updates memory usage statistics for the application.
+
+    @param index Index of the application.
+    @param pid Process ID of the application.
+*/
+void stats_update_memory_usage(int index, int pid);
 
 #endif // STATS_H
