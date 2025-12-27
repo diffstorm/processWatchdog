@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.0] - 2025-12-27
+
+### Added
+- Average heartbeat count tracking before crashes/resets.
+- Child process isolation using `setsid()` to prevent signal propagation.
+
+### Changed
+- Heartbeat timing now uses `CLOCK_MONOTONIC` instead of wall-clock time to prevent issues with NTP adjustments and system clock changes.
+- Signal handler variables now use `sig_atomic_t` for safe signal handling.
+- CPU statistics use `float` instead of `double` to reduce memory footprint.
+- Separated CPU and memory monitoring into independent functions.
+
+### Fixed
+- Static buffer in `printDate()` replaced with caller-provided buffer.
+- Buffer overflow in stats filename generation.
+- Child processes now close inherited file descriptors before exec.
+
 ## [1.3.0] - 2025-08-24
 
 ### Added

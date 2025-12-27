@@ -136,7 +136,7 @@ extern char *optarg;
 extern int opterr, optind;
 
 #define APPNAME     basename(argv[0])
-#define VERSION     "1.3.0"
+#define VERSION     "1.4.0"
 #define OPTSTR      "i:v:t:h"
 #define USAGE_FMT   "%s -i <file.ini> [-v] [-h] [-t testname]\n"
 
