@@ -376,6 +376,7 @@ Or just `./run.sh &` which is recommended.
 - Add periodic server health reporting
 - Add IPC and TCP support
 - Add json support
+- PID reuse detection (validate process start time to prevent false positives when PIDs are recycled)
 
 ## :snowman: Author
 Eray Öztürk ([@diffstorm](https://github.com/diffstorm))

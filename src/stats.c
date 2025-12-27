@@ -407,20 +407,21 @@ void stats_update_memory_usage(int index, int pid)
     }
 }
 
-static char *printDate(const time_t *t)
-{
-    static char ts[22]; // Fixme : solve without internal static buffer
+#define DATE_BUFFER_SIZE 22
 
+static char *printDate(const time_t *t, char *buf, size_t buf_size)
+{
     if((*t) > 0)
     {
-        strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", localtime(t));
+        strftime(buf, buf_size, "%Y-%m-%d %H:%M:%S", localtime(t));
     }
     else
     {
-        strcpy(ts, "Never");
+        strncpy(buf, "Never", buf_size - 1);
+        buf[buf_size - 1] = '\0';
     }
 
-    return ts;
+    return buf;
 }
 
 void stats_print_to_file(int index, const char *app_name)
@@ -435,10 +436,11 @@ void stats_print_to_file(int index, const char *app_name)
         return;
     }
 
+    char date_buf[DATE_BUFFER_SIZE];
     fprintf(fp, "Statistics for App %d %s:\n", index, app_name);
-    fprintf(fp, "Started at: %s\n", printDate(&stats[index].started_at));
-    fprintf(fp, "Crashed at: %s\n", printDate(&stats[index].crashed_at));
-    fprintf(fp, "Heartbeat reset at: %s\n", printDate(&stats[index].heartbeat_reset_at));
+    fprintf(fp, "Started at: %s\n", printDate(&stats[index].started_at, date_buf, sizeof(date_buf)));
+    fprintf(fp, "Crashed at: %s\n", printDate(&stats[index].crashed_at, date_buf, sizeof(date_buf)));
+    fprintf(fp, "Heartbeat reset at: %s\n", printDate(&stats[index].heartbeat_reset_at, date_buf, sizeof(date_buf)));
     fprintf(fp, "Start count: %zu\n", stats[index].start_count);
     fprintf(fp, "Crash count: %zu\n", stats[index].crash_count);
     fprintf(fp, "Heartbeat reset count: %zu\n", stats[index].heartbeat_reset_count);
