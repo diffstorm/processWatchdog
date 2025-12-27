@@ -1,0 +1,35 @@
+[Unit]
+Description=Process Watchdog - Monitor and restart applications
+Documentation=https://github.com/diffstorm/processWatchdog
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/processWatchdog -i /etc/processwatchdog/config.ini
+ExecReload=/bin/kill -SIGUSR1 $MAINPID
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log /var/run /tmp
+
+# User and group (uncomment and adjust as needed)
+# User=processwatchdog
+# Group=processwatchdog
+
+# Working directory
+WorkingDirectory=/var/lib/processwatchdog
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=processwatchdog
+
+[Install]
+WantedBy=multi-user.target

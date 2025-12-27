@@ -354,6 +354,44 @@ To build the project with CMake, you need to have CMake and GTest installed.
     ./test/unit_tests
     ```
 
+## Systemd Service Installation (optional)
+
+For production deployment on systemd-based Linux systems, you can install processWatchdog as a system service:
+
+1. **Build and install the binary:**
+   ```bash
+   make BUILD_TYPE=release
+   sudo cp processWatchdog /usr/local/bin/
+   sudo chmod +x /usr/local/bin/processWatchdog
+   ```
+
+2. **Create configuration directory:**
+   ```bash
+   sudo mkdir -p /etc/processwatchdog
+   sudo mkdir -p /var/lib/processwatchdog
+   sudo cp config.ini /etc/processwatchdog/
+   ```
+
+3. **Install the service file:**
+   ```bash
+   sudo cp processwatchdog.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   ```
+
+4. **Enable and start the service:**
+   ```bash
+   sudo systemctl enable processwatchdog
+   sudo systemctl start processwatchdog
+   ```
+
+5. **Check service status:**
+   ```bash
+   sudo systemctl status processwatchdog
+   sudo journalctl -u processwatchdog -f  # Follow logs
+   ```
+
+**Note:** Edit `/etc/processwatchdog/config.ini` and adjust paths in `processwatchdog.service` as needed for your setup.
+
 ## Running the Application
 Use the provided `run.sh` script to start the Process Watchdog application. This script includes a mechanism to restart the watchdog itself if it crashes, providing an additional level of protection.
 
