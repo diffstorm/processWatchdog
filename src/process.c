@@ -84,6 +84,19 @@ void process_start(int app_index)
     else if(pid == 0)
     {
         // Child process
+        // Close inherited file descriptors (except stdin/stdout/stderr)
+        int max_fd = (int)sysconf(_SC_OPEN_MAX);
+
+        if(max_fd < 0)
+        {
+            max_fd = 1024; // Fallback if sysconf fails
+        }
+
+        for(int fd = 3; fd < max_fd; fd++)
+        {
+            close(fd);
+        }
+
         // Reset signals to default
         struct sigaction sa;
         sa.sa_handler = SIG_DFL;
