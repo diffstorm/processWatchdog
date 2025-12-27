@@ -138,7 +138,14 @@ extern int opterr, optind;
 #define APPNAME     basename(argv[0])
 #define VERSION     "1.4.0"
 #define OPTSTR      "i:v:t:h"
-#define USAGE_FMT   "%s -i <file.ini> [-v] [-h] [-t testname]\n"
+#define USAGE_FMT   "%s -i <file.ini> [-v|--version] [-h|--help] [-t testname]\n"
+
+static const struct option long_options[] =
+{
+    {"version", no_argument, NULL, 'v'},
+    {"help",    no_argument, NULL, 'h'},
+    {NULL,      0,           NULL,  0 }
+};
 
 static volatile sig_atomic_t kill_error = 10; // after 10 times SIGUSR1 the app exits forcefully
 static volatile sig_atomic_t main_alive = 1; // terminate application (1=true, 0=false)
@@ -258,7 +265,7 @@ int main(int argc, char *argv[])
     signal(SIGUSR2, SIGUSR2_handler); // rfu
 
     // Scan parameters
-    while((opt = getopt(argc, argv, OPTSTR)) != EOF)
+    while((opt = getopt_long(argc, argv, OPTSTR, long_options, NULL)) != -1)
     {
         switch(opt)
         {
