@@ -143,4 +143,4 @@ while True:
                 time.sleep(interval)
         elif role == "crash":
             log_message(index, f'{name} process crashed')
-            sys.exit(0)
+            sys.exit(1)
