@@ -25,18 +25,29 @@
 #include <string.h>
 #include <time.h>
 
+/**
+    @brief Gets the current monotonic time in seconds.
+    @return Monotonic time in seconds.
+*/
+static long get_monotonic_time(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec;
+}
+
 void heartbeat_update_time(int app_index)
 {
     Application_t *apps = apps_get_array();
-    apps[app_index].last_heartbeat = time(NULL);
+    apps[app_index].last_heartbeat = (time_t)get_monotonic_time();
     LOGD("Heartbeat time updated for %s", apps[app_index].name);
 }
 
 time_t heartbeat_get_elapsed_time(int app_index)
 {
     Application_t *apps = apps_get_array();
-    time_t now = time(NULL);
-    return now - apps[app_index].last_heartbeat;
+    long now = get_monotonic_time();
+    return (time_t)(now - apps[app_index].last_heartbeat);
 }
 
 bool heartbeat_is_timeout(int app_index)
@@ -54,19 +65,20 @@ bool heartbeat_is_timeout(int app_index)
         return false;    // Heartbeat not expected for this app
     }
 
-    const time_t now = time(NULL);
+    const long now = get_monotonic_time();
+    const long elapsed = now - (long)app->last_heartbeat;
 
-    if(now < app->last_heartbeat)
+    // Monotonic clock should never go backwards, but handle edge case
+    if(elapsed < 0)
     {
-        LOGW("Time anomaly detected for %s (system clock changed?)", app->name);
+        LOGW("Monotonic time anomaly for %s, resetting", app->name);
         heartbeat_update_time(app_index);
-        return false;  // Reset and give another interval
+        return false;
     }
 
-    const time_t first_heartbeat_threshold = (time_t)MAX(app->heartbeat_interval, app->heartbeat_delay); // delay is designed to be larger than interval
-    const time_t regular_threshold = (time_t)app->heartbeat_interval;
-    const time_t threshold = app->first_heartbeat ? regular_threshold : first_heartbeat_threshold;
-    const time_t elapsed = now - app->last_heartbeat;
+    const long first_heartbeat_threshold = (long)MAX(app->heartbeat_interval, app->heartbeat_delay);
+    const long regular_threshold = (long)app->heartbeat_interval;
+    const long threshold = app->first_heartbeat ? regular_threshold : first_heartbeat_threshold;
 
     if(elapsed >= threshold)
     {
