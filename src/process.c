@@ -84,6 +84,9 @@ void process_start(int app_index)
     else if(pid == 0)
     {
         // Child process
+        // Create new session to detach from parent's terminal/process group
+        // The child processes should be started in their own process group so they don't receive signals meant for the watchdog
+        setsid();
         // Close inherited file descriptors (except stdin/stdout/stderr)
         int max_fd = (int)sysconf(_SC_OPEN_MAX);
 
