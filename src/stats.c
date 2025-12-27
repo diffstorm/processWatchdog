@@ -29,7 +29,7 @@
 #include <unistd.h>
 
 #define STATS_MAGIC ((uint32_t)0xA50FAA55)
-#define MAX_FILENAME_LENGTH MAX_APP_NAME_LENGTH
+#define MAX_FILENAME_LENGTH (MAX_APP_NAME_LENGTH + 16) // "stats_" + name + ".log" + null
 
 /**
     @brief Structure that holds data for each application.

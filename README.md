@@ -377,6 +377,7 @@ Or just `./run.sh &` which is recommended.
 - Add IPC and TCP support
 - Add json support
 - PID reuse detection (validate process start time to prevent false positives when PIDs are recycled)
+- Configurable timeouts (resource sampling interval, stats write interval, process termination timeout)
 
 ## :snowman: Author
 Eray Öztürk ([@diffstorm](https://github.com/diffstorm))
