@@ -140,16 +140,16 @@ extern int opterr, optind;
 #define OPTSTR      "i:v:t:h"
 #define USAGE_FMT   "%s -i <file.ini> [-v] [-h] [-t testname]\n"
 
-static volatile int kill_error = 10; // after 10 times SIGUSR1 the app exits forcefully
-static volatile bool main_alive = true; // terminate application
-static volatile int return_code = EXIT_NORMALLY;
+static volatile sig_atomic_t kill_error = 10; // after 10 times SIGUSR1 the app exits forcefully
+static volatile sig_atomic_t main_alive = 1; // terminate application (1=true, 0=false)
+static volatile sig_atomic_t return_code = EXIT_NORMALLY;
 
 // send signal INT to restart application
 void SIGINT_handler(int sig)
 {
     UNUSED(sig);
     LOGN("INT detected, Restarting");
-    main_alive = false;
+    main_alive = 0;
     return_code = EXIT_RESTART;
 }
 
@@ -158,7 +158,7 @@ void SIGQUIT_handler(int sig)
 {
     UNUSED(sig);
     LOGN("QUIT detected, Rebooting");
-    main_alive = false;
+    main_alive = 0;
     return_code = EXIT_REBOOT;
 }
 
@@ -167,7 +167,7 @@ void SIGUSR1_handler(int sig)
 {
     UNUSED(sig);
     LOGN("USR1 detected, Terminating");
-    main_alive = false;
+    main_alive = 0;
     return_code = EXIT_NORMALLY;
 
     if(kill_error > 0)
@@ -331,7 +331,7 @@ int main(int argc, char *argv[])
             if(main_alive)
             {
                 LOGE("UDP poll failed");
-                main_alive = false;
+                main_alive = 0;
                 continue;
             }
         }
@@ -408,19 +408,19 @@ int main(int argc, char *argv[])
         if(filecmd_exists(FILECMD_STOPAPP))
         {
             LOGN("%s has stopped by file command", APPNAME);
-            main_alive = false;
+            main_alive = 0;
             return_code = EXIT_NORMALLY;
         }
         else if(filecmd_exists(FILECMD_RESTARTAPP))
         {
             LOGN("%s has restarted by file command", APPNAME);
-            main_alive = false;
+            main_alive = 0;
             return_code = EXIT_RESTART;
         }
         else if(filecmd_exists(FILECMD_REBOOT))
         {
             LOGN("System reboot by file command");
-            main_alive = false;
+            main_alive = 0;
             return_code = EXIT_REBOOT;
         }
 
@@ -437,7 +437,7 @@ int main(int argc, char *argv[])
                     if(tm_now->tm_hour == apps_get_state()->reboot_params.daily_time.hour && tm_now->tm_min == apps_get_state()->reboot_params.daily_time.min)
                     {
                         LOGN("Periodic reboot triggered (daily time)");
-                        main_alive = false;
+                        main_alive = 0;
                         return_code = EXIT_REBOOT;
                     }
 
@@ -451,7 +451,7 @@ int main(int argc, char *argv[])
                     if(uptime_minutes > 0 && uptime_minutes % apps_get_state()->reboot_params.interval_minutes == 0)
                     {
                         LOGN("Periodic reboot triggered (interval)");
-                        main_alive = false;
+                        main_alive = 0;
                         return_code = EXIT_REBOOT;
                     }
 
