@@ -211,6 +211,22 @@ static int config_ini_handler(void *user, const char *section, const char *name,
                 return 0;
             }
         }
+        else if(strcmp(name, "max_retries") == 0)
+        {
+            if(!parse_int(value, 0, INT_MAX, &apps[index].max_retries))
+            {
+                LOGE("Invalid max_retries for app %s: %s", apps[index].name, value);
+                return 0;
+            }
+        }
+        else if(strcmp(name, "base_delay") == 0)
+        {
+            if(!parse_int(value, 1, INT_MAX, &apps[index].base_delay))
+            {
+                LOGE("Invalid base_delay for app %s: %s", apps[index].name, value);
+                return 0;
+            }
+        }
         else if(strcmp(name, "cmd") == 0)
         {
             snprintf(apps[index].cmd, MAX_APP_CMD_LENGTH, "%s", value);
@@ -265,6 +281,22 @@ int config_parse_file(const char *ini_path, Application_t *apps, int max_apps, A
     {
         LOGE("Failed to parse INI file %s", ini_path);
         return 1;
+    }
+
+    // Set default values for max_retries and base_delay if not specified
+    for(int i = 0; i < state->app_count; i++)
+    {
+        if(apps[i].max_retries <= 0)
+        {
+            apps[i].max_retries = 0; // 0 means backoff is disabled (current behavior)
+        }
+        if(apps[i].base_delay <= 0)
+        {
+            apps[i].base_delay = 1; // Default base delay is 1 second
+        }
+        // Initialize retry_count and last_failure_time
+        apps[i].retry_count = 0;
+        apps[i].last_failure_time = 0;
     }
 
     LOGD("%d processes have found in the ini file %s", state->app_count, ini_path);

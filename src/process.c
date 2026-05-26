@@ -30,6 +30,68 @@
 #include <sys/wait.h>
 #include <errno.h>
 
+/**
+    @brief Calculates the exponential backoff delay.
+    
+    @param retry_count Current retry count (1-based).
+    @param base_delay Base delay in seconds.
+    @return Delay in seconds to wait before next retry.
+*/
+static int calculate_backoff_delay(int retry_count, int base_delay)
+{
+    // delay = base_delay * 2^(retry_count - 1)
+    // Cap the delay to prevent excessive waits (max 3600 seconds = 1 hour)
+    int delay = base_delay * (1 << (retry_count - 1));
+    if(delay > 3600)
+    {
+        delay = 3600;
+    }
+    return delay;
+}
+
+/**
+    @brief Checks if the process should be restarted based on backoff policy.
+    
+    @param app_index Index of the application.
+    @return true if restart should proceed, false if waiting for backoff.
+*/
+static bool should_restart_with_backoff(int app_index)
+{
+    Application_t *apps = apps_get_array();
+    Application_t *app = &apps[app_index];
+    
+    // If backoff is disabled (max_retries <= 0), always restart
+    if(app->max_retries <= 0)
+    {
+        return true;
+    }
+    
+    // Check if we've exceeded max retries
+    if(app->retry_count >= app->max_retries)
+    {
+        LOGE("Process %s has reached max_retries (%d), stopping retries permanently",
+             app->name, app->max_retries);
+        return false;
+    }
+    
+    // Check if we need to wait for backoff delay
+    if(app->last_failure_time > 0)
+    {
+        int delay = calculate_backoff_delay(app->retry_count + 1, app->base_delay);
+        time_t now = time(NULL);
+        time_t elapsed = now - app->last_failure_time;
+        
+        if(elapsed < delay)
+        {
+            LOGD("Process %s waiting for backoff: %d/%d seconds remaining",
+                 app->name, (int)(delay - elapsed), delay);
+            return false;
+        }
+    }
+    
+    return true;
+}
+
 bool process_is_running(int app_index)
 {
     int pid = get_app_pid(app_index);
@@ -244,7 +306,15 @@ void process_kill(int app_index)
 void process_restart(int app_index)
 {
     Application_t *apps = apps_get_array();
-    LOGD("Restarting process %s", apps[app_index].name);
+    Application_t *app = &apps[app_index];
+    LOGD("Restarting process %s", app->name);
+
+    // Check if restart should proceed based on backoff policy
+    if(!should_restart_with_backoff(app_index))
+    {
+        LOGD("Process %s restart delayed due to backoff policy", app->name);
+        return;
+    }
 
     if(process_is_running(app_index))
     {
@@ -269,12 +339,18 @@ void process_restart(int app_index)
 
     if(!process_is_running(app_index))
     {
-        LOGE("Failed to start process %s", apps[app_index].name);
+        // Increment retry count on failure
+        app->retry_count++;
+        app->last_failure_time = time(NULL);
+        LOGE("Failed to start process %s (retry %d/%d)", app->name, app->retry_count, app->max_retries);
     }
     else
     {
+        // Reset retry count on success
+        app->retry_count = 0;
+        app->last_failure_time = 0;
         // Use heartbeat module to update heartbeat time
         heartbeat_update_time(app_index);
-        LOGI("Process %s restarted successfully", apps[app_index].name);
+        LOGI("Process %s restarted successfully", app->name);
     }
 }

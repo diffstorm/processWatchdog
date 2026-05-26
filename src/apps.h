@@ -52,12 +52,16 @@ typedef struct
     int heartbeat_interval; /**< Maximum time period in seconds between heartbeats. */
     char name[MAX_APP_NAME_LENGTH]; /**< Name of the application. */
     char cmd[MAX_APP_CMD_LENGTH]; /**< Command to start the application. */
+    int max_retries; /**< Maximum number of retry attempts for restart policy. */
+    int base_delay; /**< Base delay in seconds for exponential backoff. */
     // Not in the ini file
     bool started; /**< Flag indicating whether the application has been started. */
     bool first_heartbeat; /**< Flag indicating whether the application has sent its first heartbeat. */
     int pid; /**< Process ID of the application. */
     time_t last_heartbeat; /**< Time when the last heartbeat was received from the application. */
     time_t start_time; /**< Process start time in clock ticks since system boot. */
+    int retry_count; /**< Current retry count for restart policy. */
+    time_t last_failure_time; /**< Time when the last failure occurred. */
 } Application_t;
 
 typedef enum
