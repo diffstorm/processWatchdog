@@ -43,24 +43,45 @@ start_delay = 10
 heartbeat_delay = 60
 heartbeat_interval = 20
 cmd = /usr/bin/python test_child.py 1 crash
+# Restart policy with exponential backoff (optional)
+# max_retries = 5
+# base_delay = 1
 
 [app:Bot]
 start_delay = 20
 heartbeat_delay = 90
 heartbeat_interval = 30
 cmd = /usr/bin/python test_child.py 2 noheartbeat
+# Restart policy with exponential backoff (optional)
+# max_retries = 5
+# base_delay = 1
 
 [app:Publisher]
 start_delay = 35
 heartbeat_delay = 70
 heartbeat_interval = 16
 cmd = /usr/bin/python test_child.py 3 crash
+# Restart policy with exponential backoff (optional)
+# max_retries = 5
+# base_delay = 1
 
 [app:Alert]
 start_delay = 35
 heartbeat_delay = 130
 heartbeat_interval = 13
 cmd = /usr/bin/python test_child.py 4 noheartbeat
+# Restart policy with exponential backoff (optional)
+# max_retries = 5
+# base_delay = 1
+
+[app:BackoffTest]
+start_delay = 5
+heartbeat_delay = 10
+heartbeat_interval = 120
+cmd = /usr/bin/python test_child.py 5 crash
+# Restart policy with exponential backoff
+max_retries = 3
+base_delay = 2
 ```
 
 ### Fields
@@ -77,6 +98,63 @@ cmd = /usr/bin/python test_child.py 4 noheartbeat
 - `heartbeat_delay` : Time in seconds to wait before expecting a heartbeat from the application.
 - `heartbeat_interval` : Maximum time period in seconds between heartbeats (`0`:disables heartbeat checks).
 - `cmd` : Command to start the application.
+- `max_retries` : Optional. Maximum number of retry attempts for restart policy. Set to `0` to disable backoff (current behavior - immediate restart). Default: `0`.
+- `base_delay` : Optional. Base delay in seconds for exponential backoff calculation. Only used when `max_retries > 0`. Default: `1`.
+
+### Restart Policy with Exponential Backoff
+
+The Process Watchdog supports a configurable restart policy with exponential backoff to prevent rapid restart loops when a process consistently fails to start.
+
+#### Configuration
+
+Add `max_retries` and `base_delay` to your app configuration:
+
+```ini
+[app:MyApp]
+start_delay = 10
+heartbeat_delay = 60
+heartbeat_interval = 20
+cmd = /usr/bin/python myapp.py
+max_retries = 5
+base_delay = 1
+```
+
+For a practical test example, see the `BackoffTest` app in `config.ini`:
+
+```ini
+[app:BackoffTest]
+start_delay = 5
+heartbeat_delay = 10
+heartbeat_interval = 60
+cmd = /usr/bin/python test_child.py 5 crash
+max_retries = 3
+base_delay = 2
+```
+
+#### How It Works
+
+- **Backoff Disabled (default)**: When `max_retries` is `0` or not specified, the watchdog immediately restarts failed processes (current behavior).
+- **Backoff Enabled**: When `max_retries > 0`, the watchdog implements exponential backoff:
+  - On failure, the retry count is incremented
+  - The delay before the next restart is calculated as: `delay = base_delay * 2^(retry_count - 1)`
+  - Maximum delay is capped at 3600 seconds (1 hour)
+  - When `retry_count` reaches `max_retries`, permanent failure is logged and retries stop
+  - On successful start, retry count is reset to `0`
+
+#### Example Backoff Delays
+
+With `base_delay = 1`:
+- 1st retry: 1 second delay (2^0)
+- 2nd retry: 2 seconds delay (2^1)
+- 3rd retry: 4 seconds delay (2^2)
+- 4th retry: 8 seconds delay (2^3)
+- 5th retry: 16 seconds delay (2^4), capped at 3600s if higher
+
+#### Behavior
+
+- **Retry Count**: Incremented on process failure, reset to `0` on successful start
+- **Failure Logging**: When max retries reached, logs permanent failure with retry count
+- **Backoff Logging**: During backoff wait, logs remaining delay time
 
 ## Heartbeat Message
 For heartbeat sending processes : A heartbeat message is a UDP packet with the process ID (`PID`) prefixed by `p` (e.g., `p12345` for PID `12345`). It is sent periodically by every managed process to a specified UDP port.
@@ -414,7 +492,6 @@ Or just `./run.sh &` which is recommended.
 - Add periodic server health reporting
 - Add IPC and TCP support
 - Add json support
-- PID reuse detection (validate process start time to prevent false positives when PIDs are recycled)
 - Configurable timeouts (resource sampling interval, stats write interval, process termination timeout)
 
 ## :snowman: Author
