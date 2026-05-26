@@ -95,6 +95,14 @@ char *pstrcpy(char *s1, const char *s2);
 long get_uptime();
 
 /**
+    @brief Gets the process start time from /proc/<pid>/stat in clock ticks since boot.
+
+    @param pid Process ID to query.
+    @return Process start time in clock ticks since boot, or 0 on error.
+*/
+time_t get_process_start_time(int pid);
+
+/**
     @brief Waits for a specified number of milliseconds.
 
     @param ms Number of milliseconds to wait.

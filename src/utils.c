@@ -47,6 +47,77 @@ long get_uptime()
     return s_info.uptime;
 }
 
+/**
+    @brief Gets the process start time from /proc/<pid>/stat in clock ticks since boot.
+    
+    According to proc(5), field 22 in /proc/<pid>/stat is the process start time
+    in clock ticks since system boot.
+    
+    @param pid Process ID to query.
+    @return Process start time in clock ticks since boot, or 0 on error.
+*/
+time_t get_process_start_time(int pid)
+{
+    char path[256];
+    char buffer[1024];
+    FILE *fp;
+    long start_time = 0;
+    
+    snprintf(path, sizeof(path), "/proc/%d/stat", pid);
+    
+    fp = fopen(path, "r");
+    if(fp == NULL)
+    {
+        return 0;
+    }
+    
+    if(fread(buffer, 1, sizeof(buffer) - 1, fp) <= 0)
+    {
+        fclose(fp);
+        return 0;
+    }
+    fclose(fp);
+    
+    buffer[sizeof(buffer) - 1] = '\0';
+    
+    // Find the last ')' in the command name (field 2 is command in parentheses)
+    // Then find field 22 (start time)
+    char *ptr = strrchr(buffer, ')');
+    if(ptr == NULL)
+    {
+        return 0;
+    }
+    
+    // Skip ')' and whitespace, then count 21 fields to get to field 22
+    ptr++; // Skip ')'
+    while(*ptr == ' ')
+    {
+        ptr++;
+    }
+    
+    // Count fields - skip first 21 fields
+    int field = 1;
+    while(field < 22 && *ptr != '\0')
+    {
+        while(*ptr == ' ')
+        {
+            ptr++;
+        }
+        while(*ptr != ' ' && *ptr != '\0')
+        {
+            ptr++;
+        }
+        field++;
+    }
+    
+    if(field == 22)
+    {
+        start_time = atol(ptr);
+    }
+    
+    return (time_t)start_time;
+}
+
 void delay_ms(int ms)
 {
     if(ms > 1000)

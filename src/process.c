@@ -42,6 +42,17 @@ bool process_is_running(int app_index)
     // Check if the application is running
     if(kill(pid, 0) == 0)
     {
+        // Verify process identity by checking start time to prevent PID reuse issues
+        time_t recorded_start_time = apps_get_array()[app_index].start_time;
+        time_t current_start_time = get_process_start_time(pid);
+        
+        if(current_start_time > 0 && recorded_start_time > 0 && current_start_time != recorded_start_time)
+        {
+            LOGE("Process %s PID %d has different start time (PID reused), treating as different process",
+                 get_app_name(app_index), pid);
+            return false;
+        }
+        
         return true;  // Process is running
     }
     else if(errno == EPERM)
@@ -121,6 +132,8 @@ void process_start(int app_index)
         apps[app_index].started = true;
         apps[app_index].first_heartbeat = false;
         apps[app_index].pid = pid;
+        // Record process start time from /proc/<pid>/stat
+        apps[app_index].start_time = get_process_start_time(pid);
         LOGI("Process %s started (PID %d): %s", apps[app_index].name, apps[app_index].pid, apps[app_index].cmd);
         // Use heartbeat module to update heartbeat time
         heartbeat_update_time(app_index);
@@ -220,6 +233,7 @@ void process_kill(int app_index)
         apps[app_index].started = false;
         apps[app_index].first_heartbeat = false;
         apps[app_index].pid = 0;
+        apps[app_index].start_time = 0;
     }
     else
     {

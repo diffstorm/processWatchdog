@@ -57,6 +57,7 @@ typedef struct
     bool first_heartbeat; /**< Flag indicating whether the application has sent its first heartbeat. */
     int pid; /**< Process ID of the application. */
     time_t last_heartbeat; /**< Time when the last heartbeat was received from the application. */
+    time_t start_time; /**< Process start time in clock ticks since system boot. */
 } Application_t;
 
 typedef enum
