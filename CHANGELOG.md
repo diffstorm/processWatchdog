@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.1] - 2026-05-26
+
+### Added
+- Restart policy with exponential backoff feature.
+- Process start time verification to prevent PID reuse issues
+
 ## [1.4.0] - 2025-12-27
 
 ### Added
