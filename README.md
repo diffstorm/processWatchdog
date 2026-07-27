@@ -22,6 +22,8 @@ This application is particularly useful in environments where multiple processes
 - Generates statistics log files to track the status and history of each managed process.
 - Monitors CPU and memory usage of each process.
 - Supports periodic reboot of the host system.
+- Uses monotonic time for heartbeat and restart timing (immune to NTP adjustments and manual clock changes).
+- PID reuse detection to prevent false positives when PIDs are recycled.
 
 ## Requirements
 - If `heartbeat_interval > 0` : Processes managed by Process Watchdog must periodically send their heartbeat messages to prevent being restarted.
@@ -46,6 +48,7 @@ cmd = /usr/bin/python test_child.py 1 crash
 # Restart policy with exponential backoff (optional)
 # max_retries = 5
 # base_delay = 1
+# stop_timeout = 30
 
 [app:Bot]
 start_delay = 20
@@ -55,6 +58,7 @@ cmd = /usr/bin/python test_child.py 2 noheartbeat
 # Restart policy with exponential backoff (optional)
 # max_retries = 5
 # base_delay = 1
+# stop_timeout = 30
 
 [app:Publisher]
 start_delay = 35
@@ -64,6 +68,7 @@ cmd = /usr/bin/python test_child.py 3 crash
 # Restart policy with exponential backoff (optional)
 # max_retries = 5
 # base_delay = 1
+# stop_timeout = 30
 
 [app:Alert]
 start_delay = 35
@@ -73,6 +78,7 @@ cmd = /usr/bin/python test_child.py 4 noheartbeat
 # Restart policy with exponential backoff (optional)
 # max_retries = 5
 # base_delay = 1
+# stop_timeout = 30
 
 [app:BackoffTest]
 start_delay = 5
@@ -82,6 +88,7 @@ cmd = /usr/bin/python test_child.py 5 crash
 # Restart policy with exponential backoff
 max_retries = 3
 base_delay = 2
+stop_timeout = 30
 ```
 
 ### Fields
@@ -100,6 +107,7 @@ base_delay = 2
 - `cmd` : Command to start the application.
 - `max_retries` : Optional. Maximum number of retry attempts for restart policy. Set to `0` to disable backoff (current behavior - immediate restart). Default: `0`.
 - `base_delay` : Optional. Base delay in seconds for exponential backoff calculation. Only used when `max_retries > 0`. Default: `1`.
+- `stop_timeout` : Optional. Seconds to wait for graceful shutdown before sending SIGKILL. Default: `10`.
 
 ### Restart Policy with Exponential Backoff
 

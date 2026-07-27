@@ -144,8 +144,6 @@ static float get_process_cpu_usage(int index, int pid)
     }
 
     unsigned long long process_time = utime + stime + cutime + cstime;
-    LOGD("PID=%d utime=%llu stime=%llu cutime=%llu cstime=%llu total_process_time=%llu",
-         pid, utime, stime, cutime, cstime, process_time);
     long ticks_per_sec = sysconf(_SC_CLK_TCK);
     //long nprocs        = sysconf(_SC_NPROCESSORS_ONLN);
     struct timespec now;
@@ -180,13 +178,9 @@ static float get_process_cpu_usage(int index, int pid)
         }
 
         float cpu_sec = (float)diff / (float)ticks_per_sec;
-        LOGD("PID=%d diff=%llu ticks_per_sec=%ld cpu_sec=%.6f elapsed=%.6f",
-             pid, diff, ticks_per_sec, cpu_sec, elapsed);
         st->prev_process_time = process_time;
         st->prev_ts = now;
         float percent = (cpu_sec / elapsed) * 100.0f;
-        LOGD("PID=%d CPU usage=%.2f%% (can exceed 100%% on multicore)",
-             pid, percent);
         return percent;
     }
 
@@ -194,7 +188,6 @@ static float get_process_cpu_usage(int index, int pid)
     st->prev_process_time = process_time;
     st->prev_ts = now;
     st->initialized = 1;
-    LOGD("First call for PID=%d, initializing baseline", pid);
     return -1.0f;
 }
 
@@ -465,7 +458,6 @@ void stats_print_to_file(int index, const char *app_name)
     fprintf(fp, "Average memory usage: %s\n", humansize(stats[index].avg_memory_kb * 1024, mem_str, sizeof(mem_str)));
     fprintf(fp, "Magic: %X\n", stats[index].magic);
     fclose(fp);
-    LOGD("Statistics for App %d printed to %s", index, filename);
 }
 
 static void resetStatisticsFile(int index, const char *app_name)

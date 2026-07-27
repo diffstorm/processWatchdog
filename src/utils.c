@@ -49,10 +49,10 @@ long get_uptime()
 
 /**
     @brief Gets the process start time from /proc/<pid>/stat in clock ticks since boot.
-    
+
     According to proc(5), field 22 in /proc/<pid>/stat is the process start time
     in clock ticks since system boot.
-    
+
     @param pid Process ID to query.
     @return Process start time in clock ticks since boot, or 0 on error.
 */
@@ -62,55 +62,59 @@ unsigned long get_process_start_time(pid_t pid)
     char buffer[1024];
     FILE *fp;
     size_t bytes_read;
-    
     snprintf(path, sizeof(path), "/proc/%d/stat", pid);
-    
     fp = fopen(path, "r");
+
     if(fp == NULL)
     {
         return 0;
     }
-    
+
     bytes_read = fread(buffer, 1, sizeof(buffer) - 1, fp);
+
     if(bytes_read == 0)
     {
         fclose(fp);
         return 0;
     }
+
     fclose(fp);
-    
     buffer[bytes_read] = '\0';
-    
     // Find the last ')' in the command name (field 2 is command in parentheses)
     // Then find field 22 (start time)
     char *ptr = strrchr(buffer, ')');
+
     if(ptr == NULL)
     {
         return 0;
     }
-    
+
     // Field 3 begins after the command. Advance through fields 3-21 so ptr
     // points at field 22, the start time.
     ptr++;
+
     while(*ptr == ' ')
     {
         ptr++;
     }
-    
+
     int field = 3;
+
     while(field < 22 && *ptr != '\0')
     {
         while(*ptr == ' ')
         {
             ptr++;
         }
+
         while(*ptr != ' ' && *ptr != '\0')
         {
             ptr++;
         }
+
         field++;
     }
-    
+
     if(field != 22 || *ptr == '\0')
     {
         return 0;
@@ -119,6 +123,7 @@ unsigned long get_process_start_time(pid_t pid)
     errno = 0;
     char *end = NULL;
     unsigned long start_time = strtoul(ptr, &end, 10);
+
     if(errno != 0 || end == ptr)
     {
         return 0;

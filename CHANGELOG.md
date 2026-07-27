@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.2] - 2026-07-27
+
+### Changed
+- Restart backoff logic now uses `CLOCK_MONOTONIC` for elapsed time calculations (was using wall-clock `time(NULL)`).
+
 ## [1.4.1] - 2026-05-26
 
 ### Added
@@ -13,16 +18,19 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Average heartbeat count tracking before crashes/resets.
 - Child process isolation using `setsid()` to prevent signal propagation.
+- Exponential backoff with configurable `max_retries` and `base_delay`.
+- `--version` flag support (`--version` and `-v` both work).
 
 ### Changed
-- Heartbeat timing now uses `CLOCK_MONOTONIC` instead of wall-clock time to prevent issues with NTP adjustments and system clock changes.
+- Heartbeat timing now uses `CLOCK_MONOTONIC` to prevent issues with NTP adjustments and system clock changes.
+- Restart backoff logic now uses `CLOCK_MONOTONIC` for elapsed time calculations.
 - Signal handler variables now use `sig_atomic_t` for safe signal handling.
 - CPU statistics use `float` instead of `double` to reduce memory footprint.
 - Separated CPU and memory monitoring into independent functions.
 
 ### Fixed
 - Static buffer in `printDate()` replaced with caller-provided buffer.
-- Buffer overflow in stats filename generation.
+- Buffer overflow in stats filename generation (increased buffer size).
 - Child processes now close inherited file descriptors before exec.
 
 ## [1.3.0] - 2025-08-24

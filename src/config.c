@@ -227,6 +227,14 @@ static int config_ini_handler(void *user, const char *section, const char *name,
                 return 0;
             }
         }
+        else if(strcmp(name, "stop_timeout") == 0)
+        {
+            if(!parse_int(value, 1, INT_MAX, &apps[index].stop_timeout))
+            {
+                LOGE("Invalid stop_timeout for app %s: %s", apps[index].name, value);
+                return 0;
+            }
+        }
         else if(strcmp(name, "cmd") == 0)
         {
             snprintf(apps[index].cmd, MAX_APP_CMD_LENGTH, "%s", value);
@@ -283,17 +291,24 @@ int config_parse_file(const char *ini_path, Application_t *apps, int max_apps, A
         return 1;
     }
 
-    // Set default values for max_retries and base_delay if not specified
+    // Set default values for max_retries, base_delay, and stop_timeout if not specified
     for(int i = 0; i < state->app_count; i++)
     {
         if(apps[i].max_retries <= 0)
         {
             apps[i].max_retries = 0; // 0 means backoff is disabled (current behavior)
         }
+
         if(apps[i].base_delay <= 0)
         {
             apps[i].base_delay = 1; // Default base delay is 1 second
         }
+
+        if(apps[i].stop_timeout <= 0)
+        {
+            apps[i].stop_timeout = 10; // Default stop timeout is 10 seconds
+        }
+
         // Initialize retry_count and last_failure_time
         apps[i].retry_count = 0;
         apps[i].last_failure_time = 0;

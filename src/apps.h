@@ -54,6 +54,7 @@ typedef struct
     char cmd[MAX_APP_CMD_LENGTH]; /**< Command to start the application. */
     int max_retries; /**< Maximum number of retry attempts for restart policy. */
     int base_delay; /**< Base delay in seconds for exponential backoff. */
+    int stop_timeout; /**< Seconds to wait for graceful shutdown before SIGKILL. */
     // Not in the ini file
     bool started; /**< Flag indicating whether the application has been started. */
     bool first_heartbeat; /**< Flag indicating whether the application has sent its first heartbeat. */

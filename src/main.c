@@ -136,7 +136,7 @@ extern char *optarg;
 extern int opterr, optind;
 
 #define APPNAME     basename(argv[0])
-#define VERSION     "1.4.1"
+#define VERSION     "1.4.2"
 #define OPTSTR      "i:v:t:h"
 #define USAGE_FMT   "%s -i <file.ini> [-v|--version] [-h|--help] [-t testname]\n"
 
@@ -245,7 +245,12 @@ void help(char *progname)
             "start_delay = 35\n"
             "heartbeat_delay = 130\n"
             "heartbeat_interval = 13\n"
-            "cmd = /usr/bin/python test_child.py 4 noheartbeat\n");
+            "cmd = /usr/bin/python test_child.py 4 noheartbeat\n"
+            "\n"
+            "# Restart policy with exponential backoff (optional)\n"
+            "# max_retries = 5\n"
+            "# base_delay = 1\n"
+            "# stop_timeout = 30\n");
 }
 
 void version(char *progname)

@@ -32,7 +32,7 @@
 
 /**
     @brief Calculates the exponential backoff delay.
-    
+
     @param retry_count Current retry count (1-based).
     @param base_delay Base delay in seconds.
     @return Delay in seconds to wait before next retry.
@@ -42,16 +42,18 @@ static int calculate_backoff_delay(int retry_count, int base_delay)
     // delay = base_delay * 2^(retry_count - 1)
     // Cap the delay to prevent excessive waits (max 3600 seconds = 1 hour)
     int delay = base_delay * (1 << (retry_count - 1));
+
     if(delay > 3600)
     {
         delay = 3600;
     }
+
     return delay;
 }
 
 /**
     @brief Checks if the process should be restarted based on backoff policy.
-    
+
     @param app_index Index of the application.
     @return true if restart should proceed, false if waiting for backoff.
 */
@@ -59,13 +61,13 @@ static bool should_restart_with_backoff(int app_index)
 {
     Application_t *apps = apps_get_array();
     Application_t *app = &apps[app_index];
-    
+
     // If backoff is disabled (max_retries <= 0), always restart
     if(app->max_retries <= 0)
     {
         return true;
     }
-    
+
     // Check if we've exceeded max retries
     if(app->retry_count >= app->max_retries)
     {
@@ -73,14 +75,16 @@ static bool should_restart_with_backoff(int app_index)
              app->name, app->max_retries);
         return false;
     }
-    
+
     // Check if we need to wait for backoff delay
     if(app->last_failure_time > 0)
     {
         int delay = calculate_backoff_delay(app->retry_count + 1, app->base_delay);
-        time_t now = time(NULL);
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        time_t now = ts.tv_sec;
         time_t elapsed = now - app->last_failure_time;
-        
+
         if(elapsed < delay)
         {
             LOGD("Process %s waiting for backoff: %d/%d seconds remaining",
@@ -88,7 +92,7 @@ static bool should_restart_with_backoff(int app_index)
             return false;
         }
     }
-    
+
     return true;
 }
 
@@ -108,6 +112,7 @@ static void terminate_unverified_child(pid_t pid, const char *name)
     for(int attempt = 0; attempt < 10; attempt++)
     {
         pid_t result = waitpid(pid, &status, WNOHANG);
+
         if(result == pid || (result < 0 && errno == ECHILD))
         {
             return;
@@ -124,6 +129,7 @@ static void terminate_unverified_child(pid_t pid, const char *name)
     }
 
     LOGE("Unverified process %s (PID %d) did not stop; sending SIGKILL", name, pid);
+
     if(kill(pid, SIGKILL) < 0 && errno != ESRCH)
     {
         LOGE("Failed to kill unverified process %s (PID %d): %s",
@@ -151,7 +157,7 @@ bool process_is_running(int app_index)
         // Verify process identity by checking start time to prevent PID reuse issues
         unsigned long recorded_start_time = apps_get_array()[app_index].start_time;
         unsigned long current_start_time = get_process_start_time(pid);
-        
+
         if(current_start_time == 0 || recorded_start_time == 0)
         {
             LOGE("Unable to verify identity for process %s (PID %d)",
@@ -165,7 +171,7 @@ bool process_is_running(int app_index)
                  get_app_name(app_index), pid);
             return false;
         }
-        
+
         return true;  // Process is running
     }
     else if(errno == EPERM)
@@ -257,11 +263,13 @@ void process_start(int app_index)
         apps[app_index].started = true;
         apps[app_index].first_heartbeat = false;
         apps[app_index].pid = pid;
+
         // /proc entries can be momentarily unavailable after fork. Retry briefly
         // before treating the child as unverified.
         for(int attempt = 0; attempt < 3 && apps[app_index].start_time == 0; attempt++)
         {
             apps[app_index].start_time = get_process_start_time(pid);
+
             if(apps[app_index].start_time == 0 && attempt < 2)
             {
                 usleep(10000);
@@ -289,7 +297,8 @@ void process_kill(int app_index)
 {
     Application_t *apps = apps_get_array();
     bool killed = false;
-    LOGD("Killing process %s", apps[app_index].name);
+    int stop_timeout = apps[app_index].stop_timeout;
+    LOGD("Killing process %s with timeout %d seconds", apps[app_index].name, stop_timeout);
 
     if(apps[app_index].pid <= 0)
     {
@@ -302,8 +311,8 @@ void process_kill(int app_index)
     }
 
     int status;
-    int max_wait = MAX_WAIT_PROCESS_TERMINATION; // [seconds]
-    LOGD("Waiting for the process %s", apps[app_index].name);
+    int max_wait = stop_timeout; // Use configurable timeout
+    LOGD("Waiting for the process %s for up to %d seconds", apps[app_index].name, stop_timeout);
 
     do
     {
@@ -424,7 +433,9 @@ void process_restart(int app_index)
     {
         // Increment retry count on failure
         app->retry_count++;
-        app->last_failure_time = time(NULL);
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        app->last_failure_time = ts.tv_sec;
         LOGE("Failed to start process %s (retry %d/%d)", app->name, app->retry_count, app->max_retries);
     }
     else
