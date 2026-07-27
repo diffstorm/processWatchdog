@@ -92,6 +92,50 @@ static bool should_restart_with_backoff(int app_index)
     return true;
 }
 
+/**
+    @brief Terminates and reaps a child whose identity could not be verified.
+*/
+static void terminate_unverified_child(pid_t pid, const char *name)
+{
+    int status;
+
+    if(kill(pid, SIGTERM) < 0 && errno != ESRCH)
+    {
+        LOGE("Failed to terminate unverified process %s (PID %d): %s",
+             name, pid, strerror(errno));
+    }
+
+    for(int attempt = 0; attempt < 10; attempt++)
+    {
+        pid_t result = waitpid(pid, &status, WNOHANG);
+        if(result == pid || (result < 0 && errno == ECHILD))
+        {
+            return;
+        }
+
+        if(result < 0 && errno != EINTR)
+        {
+            LOGE("Failed to wait for unverified process %s (PID %d): %s",
+                 name, pid, strerror(errno));
+            return;
+        }
+
+        usleep(100000);
+    }
+
+    LOGE("Unverified process %s (PID %d) did not stop; sending SIGKILL", name, pid);
+    if(kill(pid, SIGKILL) < 0 && errno != ESRCH)
+    {
+        LOGE("Failed to kill unverified process %s (PID %d): %s",
+             name, pid, strerror(errno));
+    }
+
+    while(waitpid(pid, &status, 0) < 0 && errno == EINTR)
+    {
+        // Retry interrupted waits so the child is reaped before returning.
+    }
+}
+
 bool process_is_running(int app_index)
 {
     int pid = get_app_pid(app_index);
@@ -105,10 +149,17 @@ bool process_is_running(int app_index)
     if(kill(pid, 0) == 0)
     {
         // Verify process identity by checking start time to prevent PID reuse issues
-        time_t recorded_start_time = apps_get_array()[app_index].start_time;
-        time_t current_start_time = get_process_start_time(pid);
+        unsigned long recorded_start_time = apps_get_array()[app_index].start_time;
+        unsigned long current_start_time = get_process_start_time(pid);
         
-        if(current_start_time > 0 && recorded_start_time > 0 && current_start_time != recorded_start_time)
+        if(current_start_time == 0 || recorded_start_time == 0)
+        {
+            LOGE("Unable to verify identity for process %s (PID %d)",
+                 get_app_name(app_index), pid);
+            return false;
+        }
+
+        if(current_start_time != recorded_start_time)
         {
             LOGE("Process %s PID %d has different start time (PID reused), treating as different process",
                  get_app_name(app_index), pid);
@@ -119,8 +170,19 @@ bool process_is_running(int app_index)
     }
     else if(errno == EPERM)
     {
-        LOGE("No permission to check if process %s is running: %s", get_app_name(app_index), strerror(errno));
-        return true;
+        unsigned long recorded_start_time = apps_get_array()[app_index].start_time;
+        unsigned long current_start_time = get_process_start_time(pid);
+
+        if(recorded_start_time > 0 && current_start_time == recorded_start_time)
+        {
+            LOGE("No permission to signal process %s (PID %d), but its identity is verified",
+                 get_app_name(app_index), pid);
+            return true;
+        }
+
+        LOGE("No permission to verify process %s (PID %d); treating it as not running",
+             get_app_name(app_index), pid);
+        return false;
     }
     else
     {
@@ -147,6 +209,7 @@ void process_start(int app_index)
 {
     Application_t *apps = apps_get_array();
     apps[app_index].pid = 0;
+    apps[app_index].start_time = 0;
     // Start the application on Linux
     pid_t pid = fork();
 
@@ -194,8 +257,28 @@ void process_start(int app_index)
         apps[app_index].started = true;
         apps[app_index].first_heartbeat = false;
         apps[app_index].pid = pid;
-        // Record process start time from /proc/<pid>/stat
-        apps[app_index].start_time = get_process_start_time(pid);
+        // /proc entries can be momentarily unavailable after fork. Retry briefly
+        // before treating the child as unverified.
+        for(int attempt = 0; attempt < 3 && apps[app_index].start_time == 0; attempt++)
+        {
+            apps[app_index].start_time = get_process_start_time(pid);
+            if(apps[app_index].start_time == 0 && attempt < 2)
+            {
+                usleep(10000);
+            }
+        }
+
+        if(apps[app_index].start_time == 0)
+        {
+            LOGE("Failed to verify identity for process %s (PID %d); terminating it",
+                 apps[app_index].name, pid);
+            terminate_unverified_child(pid, apps[app_index].name);
+            apps[app_index].started = false;
+            apps[app_index].first_heartbeat = false;
+            apps[app_index].pid = 0;
+            return;
+        }
+
         LOGI("Process %s started (PID %d): %s", apps[app_index].name, apps[app_index].pid, apps[app_index].cmd);
         // Use heartbeat module to update heartbeat time
         heartbeat_update_time(app_index);

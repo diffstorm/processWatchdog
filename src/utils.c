@@ -56,12 +56,12 @@ long get_uptime()
     @param pid Process ID to query.
     @return Process start time in clock ticks since boot, or 0 on error.
 */
-time_t get_process_start_time(int pid)
+unsigned long get_process_start_time(pid_t pid)
 {
     char path[256];
     char buffer[1024];
     FILE *fp;
-    long start_time = 0;
+    size_t bytes_read;
     
     snprintf(path, sizeof(path), "/proc/%d/stat", pid);
     
@@ -71,14 +71,15 @@ time_t get_process_start_time(int pid)
         return 0;
     }
     
-    if(fread(buffer, 1, sizeof(buffer) - 1, fp) <= 0)
+    bytes_read = fread(buffer, 1, sizeof(buffer) - 1, fp);
+    if(bytes_read == 0)
     {
         fclose(fp);
         return 0;
     }
     fclose(fp);
     
-    buffer[sizeof(buffer) - 1] = '\0';
+    buffer[bytes_read] = '\0';
     
     // Find the last ')' in the command name (field 2 is command in parentheses)
     // Then find field 22 (start time)
@@ -88,15 +89,15 @@ time_t get_process_start_time(int pid)
         return 0;
     }
     
-    // Skip ')' and whitespace, then count 21 fields to get to field 22
-    ptr++; // Skip ')'
+    // Field 3 begins after the command. Advance through fields 3-21 so ptr
+    // points at field 22, the start time.
+    ptr++;
     while(*ptr == ' ')
     {
         ptr++;
     }
     
-    // Count fields - skip first 21 fields
-    int field = 1;
+    int field = 3;
     while(field < 22 && *ptr != '\0')
     {
         while(*ptr == ' ')
@@ -110,12 +111,20 @@ time_t get_process_start_time(int pid)
         field++;
     }
     
-    if(field == 22)
+    if(field != 22 || *ptr == '\0')
     {
-        start_time = atol(ptr);
+        return 0;
     }
-    
-    return (time_t)start_time;
+
+    errno = 0;
+    char *end = NULL;
+    unsigned long start_time = strtoul(ptr, &end, 10);
+    if(errno != 0 || end == ptr)
+    {
+        return 0;
+    }
+
+    return start_time;
 }
 
 void delay_ms(int ms)

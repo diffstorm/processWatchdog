@@ -59,7 +59,7 @@ typedef struct
     bool first_heartbeat; /**< Flag indicating whether the application has sent its first heartbeat. */
     int pid; /**< Process ID of the application. */
     time_t last_heartbeat; /**< Time when the last heartbeat was received from the application. */
-    time_t start_time; /**< Process start time in clock ticks since system boot. */
+    unsigned long start_time; /**< Clock ticks since boot (field 22 of /proc/<pid>/stat). */
     int retry_count; /**< Current retry count for restart policy. */
     time_t last_failure_time; /**< Time when the last failure occurred. */
 } Application_t;

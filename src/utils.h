@@ -100,7 +100,7 @@ long get_uptime();
     @param pid Process ID to query.
     @return Process start time in clock ticks since boot, or 0 on error.
 */
-time_t get_process_start_time(int pid);
+unsigned long get_process_start_time(pid_t pid);
 
 /**
     @brief Waits for a specified number of milliseconds.
