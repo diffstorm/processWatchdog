@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.3] - 2026-07-30
+
+### Added
+- **Progress Signal (Stagnation Detection)**: Optional feature to detect processes that are alive but stuck/making no progress
+  - New `progress_timeout` config field (0 = disabled, >0 = seconds between progress signals)
+  - Send `p<pid>+` when work completes (append `+` to heartbeat)
+  - Process restarted if no progress signal within `progress_timeout` seconds
+  - Full backward compatibility: existing processes work unchanged
+  - Auto-adjustment: `progress_timeout` increased if <= `heartbeat_interval`
+  - Validation: warnings for unreasonable values (>7 days)
+  - Debug logging for progress signal reception
+  - Unit tests for heartbeat parsing with/without `+` suffix
+  - Comprehensive documentation with examples in 7 programming languages
+
+### Changed
+- Centralized `get_monotonic_time()` function in `utils.c`
+- Updated test child script to support progress signal intervals: `python test_child.py 1 crash 45`
+- Enhanced configuration validation with helpful warnings
+- Added best practices documentation for progress timeout values
+
 ## [1.4.2] - 2026-07-27
 
 ### Changed

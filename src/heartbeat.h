@@ -17,6 +17,7 @@
 #ifndef HEARTBEAT_H
 #define HEARTBEAT_H
 
+#include "utils.h"
 #include <stdbool.h>
 #include <time.h>
 

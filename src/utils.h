@@ -95,6 +95,13 @@ char *pstrcpy(char *s1, const char *s2);
 long get_uptime();
 
 /**
+    @brief Gets the monotonic time in seconds.
+
+    @return Monotonic time in seconds.
+*/
+long get_monotonic_time(void);
+
+/**
     @brief Gets the process start time from /proc/<pid>/stat in clock ticks since boot.
 
     @param pid Process ID to query.

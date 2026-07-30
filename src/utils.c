@@ -48,6 +48,17 @@ long get_uptime()
 }
 
 /**
+    @brief Gets the monotonic time in seconds.
+    @return Monotonic time in seconds.
+*/
+long get_monotonic_time(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec;
+}
+
+/**
     @brief Gets the process start time from /proc/<pid>/stat in clock ticks since boot.
 
     According to proc(5), field 22 in /proc/<pid>/stat is the process start time

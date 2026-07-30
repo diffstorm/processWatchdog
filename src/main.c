@@ -72,6 +72,19 @@ void parse_commands(char *data, int length)
                 }
 
                 heartbeat_update_time(i);
+
+                if(cmd.has_progress_flag)
+                {
+                    Application_t *apps = apps_get_array();
+                    Application_t *app = &apps[i];
+
+                    if(app->progress_timeout > 0)
+                    {
+                        app->last_progress_time = (time_t)get_monotonic_time();
+                        LOGD("Process %s progress signal received (timeout: %ds)",
+                             app->name, app->progress_timeout);
+                    }
+                }
             }
         }
         break;
@@ -136,7 +149,7 @@ extern char *optarg;
 extern int opterr, optind;
 
 #define APPNAME     basename(argv[0])
-#define VERSION     "1.4.2"
+#define VERSION     "1.4.3"
 #define OPTSTR      "i:v:t:h"
 #define USAGE_FMT   "%s -i <file.ini> [-v|--version] [-h|--help] [-t testname]\n"
 
@@ -211,6 +224,11 @@ void help(char *progname)
             "periodically to the UDP port in the INI file "
             "as a string command p<pid>, "
             "otherwise the %s will restart them.\n", progname);
+    fprintf(stderr, GREEN "\nProgress Signal (optional):\n" RESET);
+    fprintf(stderr, "progress_timeout = N  : Restart if no progress signal in N seconds\n");
+    fprintf(stderr, "Send 'p<pid>+'          : When work completes\n");
+    fprintf(stderr, "  p<pid>          : Liveness only (default)\n");
+    fprintf(stderr, "  p<pid>+         : Liveness + progress\n");
     fprintf(stderr, GREEN "\nFile commands:\n" RESET
             "- start<app>\n"
             "- stop<app>\n"
@@ -233,7 +251,8 @@ void help(char *progname)
             "start_delay = 20\n"
             "heartbeat_delay = 90\n"
             "heartbeat_interval = 30\n"
-            "cmd = /usr/bin/python test_child.py 2 noheartbeat\n"
+            "progress_timeout = 60\n"
+            "cmd = /usr/bin/python bot.py\n"
             "\n"
             "[app:Publisher]\n"
             "start_delay = 35\n"
@@ -373,6 +392,48 @@ int main(int argc, char *argv[])
                 {
                     stats_write_to_file(i, get_app_name(i));
                     stats_print_to_file(i, get_app_name(i));
+                }
+
+                if(process_is_running(i))
+                {
+                    Application_t *apps = apps_get_array();
+                    Application_t *app = &apps[i];
+
+                    if(app->progress_timeout > 0)
+                    {
+                        // Validate progress_timeout is reasonable
+                        // Must be > heartbeat_interval and not unreasonably long (> 7 days)
+                        if(app->progress_timeout <= app->heartbeat_interval)
+                        {
+                            LOGW("Progress timeout %ds <= heartbeat interval %ds for %s, increasing to %ds",
+                                 app->progress_timeout, app->heartbeat_interval, app->name,
+                                 app->heartbeat_interval + 10);
+                            app->progress_timeout = app->heartbeat_interval + 10;
+                        }
+                        else if(app->progress_timeout > 7 * 24 * 3600) // 7 days
+                        {
+                            LOGW("Progress timeout %ds > 7 days for %s, capping at 7 days",
+                                 app->progress_timeout, app->name);
+                            app->progress_timeout = 7 * 24 * 3600;
+                        }
+
+                        long now = get_monotonic_time();
+                        time_t elapsed = (time_t)(now - app->last_progress_time);
+
+                        if(elapsed > app->progress_timeout)
+                        {
+                            LOGE("Process %s has not sent a progress signal for %d seconds (timeout: %ds), restarting",
+                                 app->name, elapsed, app->progress_timeout);
+                            stats_heartbeat_reset_at(i);
+                            process_restart(i);
+                            // last_progress_time reset handled in process_restart
+                            continue;
+                        }
+
+                        // Log progress signal reception for debugging
+                        LOGD("Process %s progress OK: %ds since last signal (timeout: %ds)",
+                             app->name, elapsed, app->progress_timeout);
+                    }
                 }
 
                 if(!process_is_running(i))

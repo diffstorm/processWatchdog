@@ -25,17 +25,6 @@
 #include <string.h>
 #include <time.h>
 
-/**
-    @brief Gets the current monotonic time in seconds.
-    @return Monotonic time in seconds.
-*/
-static long get_monotonic_time(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec;
-}
-
 void heartbeat_update_time(int app_index)
 {
     Application_t *apps = apps_get_array();
