@@ -216,6 +216,7 @@ void process_start(int app_index)
     Application_t *apps = apps_get_array();
     apps[app_index].pid = 0;
     apps[app_index].start_time = 0;
+    apps[app_index].last_progress_time = (time_t)get_monotonic_time();
     // Start the application on Linux
     pid_t pid = fork();
 

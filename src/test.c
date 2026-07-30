@@ -23,10 +23,49 @@
 #include "filecmd.h"
 #include "log.h"
 #include "utils.h"
+#include "cmd.h"
 
 /* internal macros */
 #define cmp(x)  if(0 == strcmp(testname, x))
 #define chk(x)  printf("%s\n", false != x() ? "Success" : "Fail!");
+
+int test_heartbeat_parsing()
+{
+    net_command_t cmd;
+    char data[32];
+    int pass = 1;
+    // Test standard heartbeat (no progress)
+    snprintf(data, sizeof(data), "p12345");
+    cmd = cmd_parse_network(data, strlen(data));
+
+    if(cmd.type != NET_CMD_HEARTBEAT || cmd.pid != 12345 || cmd.has_progress_flag != 0)
+    {
+        printf("Standard heartbeat failed\n");
+        pass = 0;
+    }
+
+    // Test heartbeat with progress signal
+    snprintf(data, sizeof(data), "p12345+");
+    cmd = cmd_parse_network(data, strlen(data));
+
+    if(cmd.type != NET_CMD_HEARTBEAT || cmd.pid != 12345 || cmd.has_progress_flag != 1)
+    {
+        printf("Heartbeat with progress failed\n");
+        pass = 0;
+    }
+
+    // Test heartbeat with progress signal (different PID)
+    snprintf(data, sizeof(data), "p9999+");
+    cmd = cmd_parse_network(data, strlen(data));
+
+    if(cmd.type != NET_CMD_HEARTBEAT || cmd.pid != 9999 || cmd.has_progress_flag != 1)
+    {
+        printf("Heartbeat with progress (PID 9999) failed\n");
+        pass = 0;
+    }
+
+    return pass;
+}
 
 void test_filecmd()
 {
@@ -140,6 +179,10 @@ void test(char *testname)
     cmp("exit_unknown")
     {
         test_exit_unknown();
+    }
+    cmp("heartbeat_parse")
+    {
+        printf("Heartbeat parsing: %s\n", test_heartbeat_parsing() ? "PASS" : "FAIL");
     }
     // TODO: add other unit tests
     printf("Test finished\n");

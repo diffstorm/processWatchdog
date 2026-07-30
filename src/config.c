@@ -211,6 +211,30 @@ static int config_ini_handler(void *user, const char *section, const char *name,
                 return 0;
             }
         }
+        else if(strcmp(name, "progress_timeout") == 0)
+        {
+            if(!parse_int(value, 0, INT_MAX, &apps[index].progress_timeout))
+            {
+                LOGE("Invalid progress_timeout for app %s: %s", apps[index].name, value);
+                return 0;
+            }
+
+            // Warn about unreasonable progress timeouts
+            if(apps[index].progress_timeout > 0)
+            {
+                if(apps[index].progress_timeout > 7 * 24 * 3600) // 7 days
+                {
+                    LOGW("Progress timeout %ds > 7 days for %s, consider using smaller value",
+                         apps[index].progress_timeout, apps[index].name);
+                }
+
+                if(apps[index].heartbeat_interval > 0 && apps[index].progress_timeout <= apps[index].heartbeat_interval)
+                {
+                    LOGW("Progress timeout %ds <= heartbeat interval %ds for %s, should be larger",
+                         apps[index].progress_timeout, apps[index].heartbeat_interval, apps[index].name);
+                }
+            }
+        }
         else if(strcmp(name, "max_retries") == 0)
         {
             if(!parse_int(value, 0, INT_MAX, &apps[index].max_retries))
@@ -309,6 +333,8 @@ int config_parse_file(const char *ini_path, Application_t *apps, int max_apps, A
             apps[i].stop_timeout = 10; // Default stop timeout is 10 seconds
         }
 
+        apps[i].progress_timeout = 0;
+        apps[i].last_progress_time = (time_t)get_monotonic_time();
         // Initialize retry_count and last_failure_time
         apps[i].retry_count = 0;
         apps[i].last_failure_time = 0;

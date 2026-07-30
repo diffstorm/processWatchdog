@@ -26,7 +26,7 @@
 */
 typedef enum
 {
-    NET_CMD_HEARTBEAT,    /**< Heartbeat command: p<pid> */
+    NET_CMD_HEARTBEAT,    /**< Heartbeat command: p<pid> or p<pid>+ */
     NET_CMD_START,        /**< Start command: a<name> (future) */
     NET_CMD_STOP,         /**< Stop command: o<name> (future) */
     NET_CMD_RESTART,      /**< Restart command: r<name> (future) */
@@ -42,6 +42,7 @@ typedef struct
     net_command_type_t type;                    /**< Type of the command */
     int pid;                                    /**< Process ID for heartbeat commands */
     char app_name[MAX_APP_NAME_LENGTH];         /**< Application name for control commands */
+    bool has_progress_flag;                     /**< True if heartbeat includes progress signal '+' */
 } net_command_t;
 
 /**

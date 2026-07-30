@@ -55,6 +55,7 @@ typedef struct
     int max_retries; /**< Maximum number of retry attempts for restart policy. */
     int base_delay; /**< Base delay in seconds for exponential backoff. */
     int stop_timeout; /**< Seconds to wait for graceful shutdown before SIGKILL. */
+    int progress_timeout; /**< Max seconds without progress signal. 0 = disabled. */
     // Not in the ini file
     bool started; /**< Flag indicating whether the application has been started. */
     bool first_heartbeat; /**< Flag indicating whether the application has sent its first heartbeat. */
@@ -63,6 +64,7 @@ typedef struct
     unsigned long start_time; /**< Clock ticks since boot (field 22 of /proc/<pid>/stat). */
     int retry_count; /**< Current retry count for restart policy. */
     time_t last_failure_time; /**< Time when the last failure occurred. */
+    time_t last_progress_time; /**< Monotonic time of last progress signal. */
 } Application_t;
 
 typedef enum

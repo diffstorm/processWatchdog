@@ -6,6 +6,12 @@
     (UDP/TCP) for the Process Watchdog application. It provides functions to
     parse and identify different types of network commands.
 
+    The heartbeat format supports:
+    - p<pid>          : Standard liveness heartbeat (e.g., p12345)
+    - p<pid>+         : Liveness + progress signal (e.g., p12345+)
+
+    The '+' suffix indicates the process just completed a unit of work.
+
     @date 2023-01-01
     @version 1.0
     @author by Eray Ozturk | erayozturk1@gmail.com
@@ -29,6 +35,7 @@ net_command_t cmd_parse_network(const char *data, int length)
     cmd.type = NET_CMD_UNKNOWN;
     cmd.pid = 0;
     cmd.app_name[0] = '\0';
+    cmd.has_progress_flag = false;
 
     if(!data || length <= 0)
     {
@@ -37,15 +44,21 @@ net_command_t cmd_parse_network(const char *data, int length)
 
     switch(data[0])
     {
-        case 'p': // pid heartbeat : p<pid> ? p1234
+        case 'p':
         {
-            int n = parse_number(data, length, NULL);
+            char cnt;
+            int n = parse_number(data, length, &cnt);
             LOGD("Heartbeat command received from pid %d : %s", n, data);
 
             if(0 < n && INT32_MAX > n)
             {
                 cmd.type = NET_CMD_HEARTBEAT;
                 cmd.pid = n;
+
+                if(cnt < length && data[cnt] == '+')
+                {
+                    cmd.has_progress_flag = true;
+                }
             }
             else
             {

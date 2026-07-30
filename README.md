@@ -33,6 +33,105 @@ This application is particularly useful in environments where multiple processes
 Process Watchdog is also supports non-heartbeat sending processes.
 Set the `heartbeat_interval` config to zero to skip heartbeat checks for given processes.
 
+## Progress Signal (Stagnation Detection)
+By default, the watchdog only checks if a process is **alive** (sending heartbeats). A process can be alive but stuck in an infinite loop or deadlocked, wasting resources without doing useful work.
+
+The **progress signal** feature detects this stagnation by requiring the process to explicitly signal when it completes a unit of work.
+
+### How It Works
+- **Liveness Signal**: `p<pid>` - Process is running
+- **Progress Signal**: `p<pid>+` - Process is running AND completed work
+
+The watchdog tracks the time since the last progress signal. If `progress_timeout` is exceeded, the process is restarted.
+
+**Best Practices:**
+- Progress timeout should be > heartbeat interval (auto-adjusted if needed)
+- Reasonable values: 60-3600 seconds (1 minute to 1 hour)
+- Maximum allowed: 7 days (604800 seconds)
+
+### Configuration
+Add `progress_timeout` to your app section:
+
+```ini
+[app:Bot]
+start_delay = 20
+heartbeat_delay = 90
+heartbeat_interval = 30
+progress_timeout = 60  # Restart if no progress signal in 60 seconds
+cmd = /usr/bin/python bot.py
+```
+
+- `progress_timeout = 0` (default): Stagnation checking disabled (backward compatible)
+- `progress_timeout > 0`: Maximum seconds between progress signals
+
+### Sending Progress Signals
+Append `+` to the heartbeat when work completes:
+
+**Python:**
+```python
+import socket
+import os
+
+def send_pid_over_udp(port, send_progress=False):
+    host = '127.0.0.255'
+    pid = f"p{os.getpid()}"
+    if send_progress:
+        pid += "+"  # Progress signal: process completed a unit of work
+    data = pid.encode()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    sock.sendto(data, (host, port))
+    sock.close()
+
+# Liveness only
+send_pid_over_udp(12345)
+
+# After completing a work unit
+send_pid_over_udp(12345, send_progress=True)
+```
+
+**C:**
+```c
+void sendPIDOverUDP(int port, bool send_progress) {
+    pid_t pid = getpid();
+    char pid_str[20];
+    
+    if (send_progress) {
+        sprintf(pid_str, "p%d+", pid);  // Progress signal
+    } else {
+        sprintf(pid_str, "p%d", pid);   // Liveness only
+    }
+    // ... send via UDP
+}
+
+sendPIDOverUDP(12345, false);  // Liveness only
+sendPIDOverUDP(12345, true);   // After work completes
+```
+
+### Test Child Script
+```bash
+# No progress signal (backward compatible)
+python test_child.py 1 crash
+
+# Send progress signal every 45 seconds
+python test_child.py 1 crash 45
+
+# No heartbeat at all (noheartbeat role)
+python test_child.py 2 noheartbeat
+
+# Progress signal with noheartbeat (will restart due to progress timeout)
+python test_child.py 2 noheartbeat 30
+```
+
+Or configure in config.ini:
+```ini
+[app:Bot]
+heartbeat_interval = 30
+progress_timeout = 60
+cmd = /usr/bin/python test_child.py 2 crash 45
+# Sends heartbeats every ~15s, progress signal (+) every 45s
+```
+
 ## Configuration File : `config.ini`
 An example configuration file looks like this:
 
@@ -54,6 +153,7 @@ cmd = /usr/bin/python test_child.py 1 crash
 start_delay = 20
 heartbeat_delay = 90
 heartbeat_interval = 30
+progress_timeout = 60  # Optional: Restart if no progress signal in 60 seconds
 cmd = /usr/bin/python test_child.py 2 noheartbeat
 # Restart policy with exponential backoff (optional)
 # max_retries = 5
@@ -104,6 +204,7 @@ stop_timeout = 30
 - `start_delay` : Delay in seconds before starting the application.
 - `heartbeat_delay` : Time in seconds to wait before expecting a heartbeat from the application.
 - `heartbeat_interval` : Maximum time period in seconds between heartbeats (`0`:disables heartbeat checks).
+- `progress_timeout` : Optional. Maximum seconds between progress signals (`0`:disables stagnation checking). See [Progress Signal](#progress-signal-stagnation-detection) section.
 - `cmd` : Command to start the application.
 - `max_retries` : Optional. Maximum number of retry attempts for restart policy. Set to `0` to disable backoff (current behavior - immediate restart). Default: `0`.
 - `base_delay` : Optional. Base delay in seconds for exponential backoff calculation. Only used when `max_retries > 0`. Default: `1`.
@@ -177,12 +278,16 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 
 public class ProcessHeartbeat {
-    public static void sendPIDOverUDP(int port) {
+    public static void sendPIDOverUDP(int port, boolean sendProgress) {
         try (DatagramSocket socket = new DatagramSocket()) {
             socket.setBroadcast(true);
             
-            String pid = "p" + ProcessHandle.current().pid();
-            byte[] data = pid.getBytes();
+            long pid = ProcessHandle.current().pid();
+            String pidStr = "p" + pid;
+            if (sendProgress) {
+                pidStr += "+";  // Progress signal
+            }
+            byte[] data = pidStr.getBytes();
             
             DatagramPacket packet = new DatagramPacket(data, data.length, InetAddress.getByName("127.0.0.255"), port);
             socket.send(packet);            
@@ -191,6 +296,12 @@ public class ProcessHeartbeat {
         }
     }
 }
+```
+
+Usage:
+```java
+sendPIDOverUDP(12345, false);  // Liveness only
+sendPIDOverUDP(12345, true);   // Liveness + progress
 ```
 
 <details>
@@ -206,15 +317,19 @@ public class ProcessHeartbeat {
 #include <arpa/inet.h>
 #include <unistd.h>
 
-void sendPIDOverUDP(int port) {
+void sendPIDOverUDP(int port, bool send_progress) {
     int sockfd;
     struct sockaddr_in addr;
     socklen_t addr_len = sizeof(addr);
     
-    // Get the current process ID
     pid_t pid = getpid();
     char pid_str[20];
-    sprintf(pid_str, "p%d", pid);
+    
+    if (send_progress) {
+        sprintf(pid_str, "p%d+", pid);  // Progress signal
+    } else {
+        sprintf(pid_str, "p%d", pid);   // Liveness only
+    }
     
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd < 0) {
@@ -227,12 +342,15 @@ void sendPIDOverUDP(int port) {
     addr.sin_port = htons(port);
     addr.sin_addr.s_addr = inet_addr("127.0.0.255");
     
-    if (sendto(sockfd, pid_str, strlen(pid_str), 0, (struct sockaddr *)&addr, addr_len) < 0) {
-        perror("sendto failed");
-    }
-    
+    sendto(sockfd, pid_str, strlen(pid_str), 0, (struct sockaddr *)&addr, addr_len);
     close(sockfd);
 }
+```
+
+Usage:
+```c
+sendPIDOverUDP(12345, false);  // Liveness only
+sendPIDOverUDP(12345, true);   // Liveness + progress
 ```
 </details>
 <details>
@@ -249,15 +367,16 @@ void sendPIDOverUDP(int port) {
 #include <unistd.h>
 #include <cstdlib>
 
-void sendPIDOverUDP(int port) {
+void sendPIDOverUDP(int port, bool send_progress) {
     int sockfd;
     struct sockaddr_in addr;
     socklen_t addr_len = sizeof(addr);
     
-    // Get the current process ID
     pid_t pid = getpid();
     std::string pid_str = "p" + std::to_string(pid);
-    const char* pid_data = pid_str.c_str();
+    if (send_progress) {
+        pid_str += "+";  // Progress signal
+    }
     
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd < 0) {
@@ -270,12 +389,15 @@ void sendPIDOverUDP(int port) {
     addr.sin_port = htons(port);
     addr.sin_addr.s_addr = inet_addr("127.0.0.255");
     
-    if (sendto(sockfd, pid_data, strlen(pid_data), 0, (struct sockaddr *)&addr, addr_len) < 0) {
-        perror("sendto failed");
-    }
-    
+    sendto(sockfd, pid_str.c_str(), pid_str.length(), 0, (struct sockaddr *)&addr, addr_len);
     close(sockfd);
 }
+```
+
+Usage:
+```cpp
+sendPIDOverUDP(12345, false);  // Liveness only
+sendPIDOverUDP(12345, true);   // Liveness + progress
 ```
 </details>
 <details>
@@ -289,19 +411,27 @@ void sendPIDOverUDP(int port) {
 #include <QByteArray>
 #include <QProcess>
 
-void sendPIDOverUDP(int port)
+void sendPIDOverUDP(int port, bool sendProgress)
 {
     QString host = "127.0.0.255";
     QString pid = "p" + QString::number(QCoreApplication::applicationPid());
+    if (sendProgress) {
+        pid += "+";  // Progress signal
+    }
     QByteArray data = pid.toUtf8();
 
     QUdpSocket socket;
     socket.bind(QHostAddress::AnyIPv4, port, QUdpSocket::ShareAddress);
 
     socket.writeDatagram(data, QHostAddress(host), port);
-
     socket.close();
 }
+```
+
+Usage:
+```cpp
+sendPIDOverUDP(12345, false);  // Liveness only
+sendPIDOverUDP(12345, true);   // Liveness + progress
 ```
 </details>
 <details>
@@ -315,12 +445,16 @@ using System.Net.Sockets;
 
 public class Program
 {
-    public static void SendPIDOverUDP(int port)
+    public static void SendPIDOverUDP(int port, bool sendProgress)
     {
         try
         {
             string host = "127.0.0.255";
             string pid = "p" + System.Diagnostics.Process.GetCurrentProcess().Id.ToString();
+            if (sendProgress)
+            {
+                pid += "+";  // Progress signal
+            }
             byte[] data = System.Text.Encoding.ASCII.GetBytes(pid);
 
             using (UdpClient client = new UdpClient())
@@ -336,6 +470,12 @@ public class Program
     }
 }
 ```
+
+Usage:
+```csharp
+SendPIDOverUDP(12345, false);  // Liveness only
+SendPIDOverUDP(12345, true);   // Liveness + progress
+```
 </details>
 <details>
   <summary>Click for example in Python</summary>
@@ -345,10 +485,12 @@ public class Program
 import socket
 import os
 
-def send_pid_over_udp(port):
+def send_pid_over_udp(port, send_progress=False):
     try:
         host = '127.0.0.255'
         pid = f"p{os.getpid()}"
+        if send_progress:
+            pid += "+"  # Progress signal: process completed a unit of work
         data = pid.encode()
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -358,6 +500,12 @@ def send_pid_over_udp(port):
         
     except Exception as e:
         print(f"Exception: {e}")
+```
+
+Usage:
+```python
+send_pid_over_udp(12345)              # Liveness only
+send_pid_over_udp(12345, send_progress=True)  # Liveness + progress
 ```
 </details>
 <details>
@@ -369,11 +517,22 @@ def send_pid_over_udp(port):
 
 send_pid_over_udp() {
     local port=$1
+    local send_progress=$2
     local host="127.0.0.255"
     local pid="p$$"  # $$ gives the PID of the current shell process
-
+    
+    if [ "$send_progress" = "true" ]; then
+        pid="${pid}+"  # Progress signal
+    fi
+    
     echo -n "$pid" | socat - UDP-DATAGRAM:$host:$port,broadcast
 }
+
+# Liveness only
+send_pid_over_udp 12345 false
+
+# With progress signal
+send_pid_over_udp 12345 true
 ```
 </details>
 
