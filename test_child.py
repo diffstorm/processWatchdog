@@ -4,8 +4,8 @@
 # Usage:
 # python test_child <index> <role> [progress_interval]
 # python test_child 1 crash                        # No progress signal
-# python test_child 2 noheartbeat                  # No progress signal
-# python test_child 2 crash 45                     # Send progress signal every 45 seconds
+# python test_child 2 noheartbeat                  # No heartbeat at all
+# python test_child 3 crash 45                     # Send progress signal every 45 seconds
 
 import os
 import socket
@@ -58,19 +58,15 @@ if len(sys.argv) >= 3:
         role = "crash"
 log_message(index, f'Role set to {role}')
 
-# Get progress interval (optional third argument)
+# Get progress interval (optional 3rd argument)
+progress_interval = 0
 if len(sys.argv) >= 4:
     try:
         progress_interval = int(sys.argv[3])
     except ValueError:
         progress_interval = 0
-log_message(index, f'Progress interval: {progress_interval}s (0=disabled)')
 
-# Get the PID
-pid = str(os.getpid())
-log_message(index, f'Pid is {pid}')
-
-# Load configuration
+# Load configuration after getting role/index
 config = configparser.ConfigParser()
 config.optionxform = str
 config.read('config.ini')
@@ -86,9 +82,16 @@ for section in config.sections():
 if index - 1 < len(app_names):
     name = app_names[index - 1]
 else:
-    name = f'Process{index}' # Fallback if index is out of bounds
+    name = f'Process{index}'
 
 log_message(index, f'Name set to {name}')
+
+if progress_interval > 0:
+    log_message(index, f'Progress interval: {progress_interval}s (CLI override)')
+
+# Get the PID
+pid = str(os.getpid())
+log_message(index, f'Pid is {pid}')
 
 # Read parameters from the specific app section
 app_section = f'app:{name}'
@@ -117,7 +120,6 @@ else:
 if heartbeat_delay > 0:
     log_message(index, f'{name} Waiting {heartbeat_delay} seconds heartbeat_delay...')
     time.sleep(heartbeat_delay - 1)
-wait_time = max(heartbeat_delay, 0)
 
 # Create a UDP socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -125,32 +127,42 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 start_time = time.time()
 last_progress_time = start_time
 
+# Calculate initial wait_time based on heartbeat_interval if heartbeat enabled
+wait_time = max(heartbeat_delay, 0)
+if heartbeat_enabled:
+    wait_time = max(random.randint(int(heartbeat_interval / 3), int(heartbeat_interval / 2)), 0)
+
 while True:
+    current_time = time.time()
+    
+    # Send heartbeat (unless disabled) + progress signal (if enabled)
     if heartbeat_enabled:
-        current_time = time.time()
-        
-        # Create the data
+        data = 'p' + pid
+        log_message(index, f'{name} Heartbeat sent: {data} after {wait_time} seconds')
+    else:
         data = 'p' + pid
 
-        # Send progress signal if enabled and interval has passed
-        send_progress = (progress_interval > 0 and (current_time - last_progress_time) >= progress_interval)
-        if send_progress:
-            data += '+'
-            last_progress_time = current_time
-            log_message(index, f'{name} Progress signal sent: {data}')
-        else:
-            # Log heartbeat
-            log_message(index, f'{name} Heartbeat sent: {data} after {wait_time} seconds')
+    # Send progress signal if enabled and interval has passed
+    send_progress = (progress_interval > 0 and (current_time - last_progress_time) >= progress_interval)
+    if send_progress:
+        data += '+'
+        last_progress_time = current_time
+        log_message(index, f'{name} Progress signal sent: {data}')
 
-        # Send the data
-        sock.sendto(data.encode('utf-8'), ('localhost', UDP_PORT))
+    # Send the data
+    sock.sendto(data.encode('utf-8'), ('localhost', UDP_PORT))
 
-        # Choose a random waiting time
+    # Wait for the next event
+    if heartbeat_enabled:
         wait_time = max(random.randint(int(heartbeat_interval / 3), int(heartbeat_interval / 2)), 0)
-
-        # Wait for the random time if greater than zero
         if wait_time > 0:
             time.sleep(wait_time)
+    elif progress_interval > 0:
+        # Sleep until next progress signal is due
+        time.sleep(progress_interval)
+    else:
+        # No heartbeat and no progress - just sleep
+        time.sleep(1)
 
     # Check the running time of the process
     elapsed_time = time.time() - start_time

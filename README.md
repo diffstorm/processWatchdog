@@ -109,27 +109,20 @@ sendPIDOverUDP(12345, true);   // After work completes
 ```
 
 ### Test Child Script
+Send progress signals by providing an optional third argument: the interval in seconds. If > 0, sends `p<pid>+` every N seconds.
+
 ```bash
 # No progress signal (backward compatible)
 python test_child.py 1 crash
 
-# Send progress signal every 45 seconds
+# Send progress signal every 45 seconds (works with crash role)
 python test_child.py 1 crash 45
 
-# No heartbeat at all (noheartbeat role)
-python test_child.py 2 noheartbeat
+# No heartbeat but send progress every 60 seconds (will trigger progress_timeout restart in watchdog)
+python test_child.py 2 noheartbeat 60
 
-# Progress signal with noheartbeat (will restart due to progress timeout)
-python test_child.py 2 noheartbeat 30
-```
-
-Or configure in config.ini:
-```ini
-[app:Bot]
-heartbeat_interval = 30
-progress_timeout = 60
-cmd = /usr/bin/python test_child.py 2 crash 45
-# Sends heartbeats every ~15s, progress signal (+) every 45s
+# No heartbeat, no progress - just runs until max_runtime
+python test_child.py 4 noheartbeat
 ```
 
 ## Configuration File : `config.ini`
@@ -153,8 +146,8 @@ cmd = /usr/bin/python test_child.py 1 crash
 start_delay = 20
 heartbeat_delay = 90
 heartbeat_interval = 30
-progress_timeout = 60  # Optional: Restart if no progress signal in 60 seconds
 cmd = /usr/bin/python test_child.py 2 noheartbeat
+# No heartbeat at all (tests watchdog restart when heartbeat is missing)
 # Restart policy with exponential backoff (optional)
 # max_retries = 5
 # base_delay = 1
@@ -189,6 +182,16 @@ cmd = /usr/bin/python test_child.py 5 crash
 max_retries = 3
 base_delay = 2
 stop_timeout = 30
+
+[app:ProgressTest]
+start_delay = 5
+heartbeat_delay = 10
+heartbeat_interval = 15
+progress_timeout = 30
+cmd = /usr/bin/python test_child.py 6 crash 10
+# Sends heartbeat and progress signal (+) every 10 seconds
+# progress_timeout=30 means restart if no progress in 30 seconds
+# This tests the progress feature: process must send p<pid>+ within 30s to avoid restart
 ```
 
 ### Fields
@@ -506,6 +509,245 @@ Usage:
 ```python
 send_pid_over_udp(12345)              # Liveness only
 send_pid_over_udp(12345, send_progress=True)  # Liveness + progress
+```
+</details>
+<details>
+  <summary>Click for example in Rust</summary>
+
+### Rust
+```rust
+use std::net::{UdpSocket, ToSocketAddrs};
+
+fn send_pid_over_udp(port: u16, send_progress: bool) {
+    let host = "127.0.0.255";
+    let pid = std::process::id();
+    let mut pid_str = format!("p{}", pid);
+    
+    if send_progress {
+        pid_str += "+";  // Progress signal
+    }
+    
+    let data = pid_str.as_bytes();
+    
+    match UdpSocket::bind("0.0.0.0:0") {
+        Ok(socket) => {
+            socket.set_broadcast(true).unwrap();
+            let addr = (host, port).to_socket_addrs().unwrap().next().unwrap();
+            socket.send_to(data, addr).unwrap();
+        }
+        Err(e) => {
+            eprintln!("Failed to bind socket: {}", e);
+        }
+    }
+}
+```
+
+Usage:
+```rust
+send_pid_over_udp(12345, false);  // Liveness only
+send_pid_over_udp(12345, true);   // Liveness + progress
+```
+</details>
+<details>
+  <summary>Click for example in Go</summary>
+
+### Go
+```go
+package main
+
+import (
+    "fmt"
+    "net"
+    "os"
+    "strconv"
+)
+
+func sendPIDOverUDP(port int, sendProgress bool) {
+    host := "127.0.0.255"
+    pid := os.Getpid()
+    pidStr := fmt.Sprintf("p%d", pid)
+    
+    if sendProgress {
+        pidStr += "+"  // Progress signal
+    }
+    
+    data := []byte(pidStr)
+    
+    addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", host, port))
+    if err != nil {
+        fmt.Printf("ResolveUDPAddr error: %v\n", err)
+        return
+    }
+    
+    conn, err := net.ListenPacket("udp", ":0")
+    if err != nil {
+        fmt.Printf("ListenPacket error: %v\n", err)
+        return
+    }
+    defer conn.Close()
+    
+    conn.(*net.UDPConn).SetBroadcast(true)
+    conn.WriteTo(data, addr)
+}
+```
+
+Usage:
+```go
+sendPIDOverUDP(12345, false)  // Liveness only
+sendPIDOverUDP(12345, true)   // Liveness + progress
+```
+</details>
+<details>
+  <summary>Click for example in TypeScript/Node.js</summary>
+
+### TypeScript/Node.js
+```typescript
+import dgram from 'dgram';
+import os from 'os';
+
+function sendPIDOverUDP(port: number, sendProgress: boolean): void {
+    const host = '127.0.0.255';
+    const pid = process.pid;
+    let pidStr = `p${pid}`;
+    
+    if (sendProgress) {
+        pidStr += '+';  // Progress signal
+    }
+    
+    const client = dgram.createSocket('udp4');
+    client.bind(() => {
+        client.setBroadcast(true);
+        const buffer = Buffer.from(pidStr);
+        client.send(buffer, 0, buffer.length, port, host, (err) => {
+            if (err) {
+                console.error(`Send error: ${err.message}`);
+            }
+            client.close();
+        });
+    });
+}
+```
+
+Usage:
+```typescript
+sendPIDOverUDP(12345, false);  // Liveness only
+sendPIDOverUDP(12345, true);   // Liveness + progress
+```
+</details>
+<details>
+  <summary>Click for example in Ruby</summary>
+
+### Ruby
+```ruby
+require 'socket'
+
+def send_pid_over_udp(port, send_progress = false)
+    host = '127.0.0.255'
+    pid = Process.pid
+    pid_str = "p#{pid}"
+    
+    if send_progress
+        pid_str += '+'  # Progress signal
+    end
+    
+    begin
+        sock = UDPSocket.new
+        sock.setsockopt(Socket::SOL_SOCKET, Socket::SO_BROADCAST, 1)
+        sock.send(pid_str, 0, host, port)
+        sock.close
+    rescue => e
+        puts "Exception: #{e.message}"
+    end
+end
+```
+
+Usage:
+```ruby
+send_pid_over_udp(12345)              # Liveness only
+send_pid_over_udp(12345, true)        # Liveness + progress
+```
+</details>
+<details>
+  <summary>Click for example in Swift</summary>
+
+### Swift
+```swift
+import Foundation
+
+func sendPIDOverUDP(port: Int, sendProgress: Bool) {
+    let host = "127.0.0.255"
+    let pid = getpid()
+    var pidStr = "p\(pid)"
+    
+    if sendProgress {
+        pidStr += "+"  // Progress signal
+    }
+    
+    guard let data = pidStr.data(using: .utf8) else {
+        print("Failed to encode data")
+        return
+    }
+    
+    let socket = GCDAsyncUdpSocket(delegate: nil, delegateQueue: nil)
+    
+    do {
+        try socket.enableBroadcast()
+        let address = try socket.address(from: host, port: port)
+        socket.send(data, to: address, withTimeout: -1, tag: 0)
+    } catch {
+        print("Error: \(error.localizedDescription)")
+    }
+}
+```
+
+Usage:
+```swift
+sendPIDOverUDP(port: 12345, sendProgress: false)  // Liveness only
+sendPIDOverUDP(port: 12345, sendProgress: true)   // Liveness + progress
+```
+</details>
+<details>
+  <summary>Click for example in PHP</summary>
+
+### PHP
+```php
+<?php
+
+function sendPIDOverUDP($port, $sendProgress = false) {
+    $host = '127.0.0.255';
+    $pid = getmypid();
+    $pidStr = "p{$pid}";
+    
+    if ($sendProgress) {
+        $pidStr .= '+';  // Progress signal
+    }
+    
+    $data = $pidStr;
+    
+    $socket = socket_create(AF_INET, SOCK_DGRAM, SOL_UDP);
+    if ($socket === false) {
+        error_log("Failed to create socket: " . socket_strerror(socket_last_error()));
+        return;
+    }
+    
+    $broadcast = true;
+    if (!socket_set_option($socket, SOL_SOCKET, SO_BROADCAST, $broadcast)) {
+        error_log("Failed to enable broadcast: " . socket_strerror(socket_last_error($socket)));
+        socket_close($socket);
+        return;
+    }
+    
+    if (socket_sendto($socket, $data, strlen($data), 0, $host, $port) === false) {
+        error_log("Failed to send data: " . socket_strerror(socket_last_error($socket)));
+    }
+    
+    socket_close($socket);
+}
+
+// Usage:
+sendPIDOverUDP(12345, false);  // Liveness only
+sendPIDOverUDP(12345, true);   // Liveness + progress
+?>
 ```
 </details>
 <details>
