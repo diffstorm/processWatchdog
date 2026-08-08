@@ -578,7 +578,9 @@ int main(int argc, char *argv[])
                     // Log cooldown status if in cooldown
                     if(app->in_cooldown)
                     {
-                        time_t remaining = app->cooldown_end_time - time(NULL);
+                        // cooldown_end_time is monotonic (process.c), so compare against the
+                        // monotonic clock — not wall-clock time(NULL) (different epoch = garbage).
+                        time_t remaining = app->cooldown_end_time - get_monotonic_time();
                         LOGN("Cooldown active for %s: %ds remaining",
                              app->name, (int)remaining);
                     }

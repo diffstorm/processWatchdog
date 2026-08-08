@@ -27,9 +27,9 @@
 typedef enum
 {
     NET_CMD_HEARTBEAT,    /**< Heartbeat command: p<pid> or p<pid>+ */
-    NET_CMD_START,        /**< Start command: a<name> (future) */
-    NET_CMD_STOP,         /**< Stop command: o<name> (future) */
-    NET_CMD_RESTART,      /**< Restart command: r<name> (future) */
+    NET_CMD_START,        /**< Start command: a<name> */
+    NET_CMD_STOP,         /**< Stop command: o<name> */
+    NET_CMD_RESTART,      /**< Restart command: r<name> */
     NET_CMD_STATUS,       /**< Status command: s<name> */
     // TODO: Resume of an app waiting for manual ack
     NET_CMD_UNKNOWN       /**< Unknown or invalid command */
