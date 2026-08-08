@@ -37,11 +37,12 @@ char *pstrcpy(char *s1, const char *s2)
 long get_uptime()
 {
     struct sysinfo s_info;
-    int error = sysinfo(&s_info);
 
-    if(error != 0)
+    if(sysinfo(&s_info) != 0)
     {
-        fprintf(stderr, "code error = %d\n", error);
+        // On failure s_info is uninitialized; returning s_info.uptime would be UB.
+        fprintf(stderr, "sysinfo failed: %s\n", strerror(errno));
+        return 0;
     }
 
     return s_info.uptime;
@@ -54,7 +55,15 @@ long get_uptime()
 long get_monotonic_time(void)
 {
     struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
+
+    if(clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+    {
+        // On failure ts is uninitialized; return 0 (same convention as time_ms()). Elapsed
+        // computations (now - last) then fail safe toward "not yet timed out".
+        fprintf(stderr, "clock_gettime(CLOCK_MONOTONIC) failed: %s\n", strerror(errno));
+        return 0;
+    }
+
     return ts.tv_sec;
 }
 
