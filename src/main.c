@@ -430,9 +430,8 @@ int main(int argc, char *argv[])
 
                 break;
 
-            case 't': // unit tests
-                test(optarg);
-                exit(EXIT_NORMALLY);
+            case 't': // unit tests: propagate pass/fail as the process exit status
+                exit(test(optarg) == 0 ? EXIT_NORMALLY : EXIT_CRASHED);
                 break;
 
             case 'v': // version

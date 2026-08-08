@@ -37,7 +37,7 @@
     @param base_delay Base delay in seconds.
     @return Delay in seconds to wait before next retry.
 */
-static int calculate_backoff_delay(int retry_count, int base_delay)
+int calculate_backoff_delay(int retry_count, int base_delay)
 {
     // delay = base_delay * 2^(retry_count-1), capped at 3600s. Clamp inputs first: an
     // unclamped shift is UB and the product can overflow negative past the cap (restart storm).

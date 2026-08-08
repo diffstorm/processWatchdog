@@ -10,6 +10,20 @@ permissions:
   contents: write   # required to push tags & create releases
 
 jobs:
+  # GTest/CMake unit suite (test/server_test.cpp). Previously never run in CI.
+  gtest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GTest + CMake
+        run: sudo apt-get update && sudo apt-get install -y cmake libgtest-dev
+      - name: Build and run unit tests
+        run: |
+          mkdir build && cd build
+          cmake ..
+          make
+          ctest --output-on-failure
+
   build:
     runs-on: ubuntu-latest
     strategy:
@@ -55,10 +69,9 @@ jobs:
         if: matrix.native
         run: |
           echo "Running unit tests..."
-          ./processWatchdog -t heartbeat_parse
-          ./processWatchdog -t circuit_breaker
-          ./processWatchdog -t cooldown
-          ./processWatchdog -t progress_timeout_config
+          # 'all' runs every automated unit test and returns non-zero on any failure,
+          # so a broken assertion now fails the build (previously -t always exited 0).
+          ./processWatchdog -t all
 
       - name: Verify cross binary architecture
         if: ${{ !matrix.native }}

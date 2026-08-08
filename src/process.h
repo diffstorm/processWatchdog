@@ -63,4 +63,15 @@ void process_kill(int app_index);
 */
 void process_restart(int app_index);
 
+/**
+    @brief Computes the exponential-backoff delay in seconds (clamped to 1 hour).
+
+    Exposed for unit testing; used by the restart policy.
+
+    @param retry_count Current retry count (1-based).
+    @param base_delay Base delay in seconds.
+    @return Delay in seconds, in [0, 3600].
+*/
+int calculate_backoff_delay(int retry_count, int base_delay);
+
 #endif // PROCESS_H
