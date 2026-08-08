@@ -13,6 +13,7 @@ add_executable(unit_tests
     ../src/process.c
     ../src/server.c
     ../src/stats.c
+    ../src/status.c
     ../src/test.c
     ../src/utils.c
 )

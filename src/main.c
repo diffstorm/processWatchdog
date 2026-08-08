@@ -29,6 +29,7 @@
 #include "heartbeat.h"
 #include "log.h"
 #include "utils.h"
+#include "status.h"
 
 #include <libgen.h> // basename
 #include <getopt.h>
@@ -136,111 +137,34 @@ void parse_commands(char *data, int length, int socket)
 
         case NET_CMD_STATUS:
         {
-            // Find app by name
-            int app_index = -1;
+            const char *sender_ip = udp_get_last_sender_ip();
+            int sender_port = udp_get_last_sender_port();
+
+            if(sender_port <= 0)
+            {
+                LOGE("Status response failed: no sender address available");
+                break;
+            }
+
+            // Empty or "*" name => reply for every app; otherwise the single named app.
+            bool all = (cmd.app_name[0] == '\0' || 0 == strcmp(cmd.app_name, "*"));
+
             for(int i = 0; i < get_app_count(); i++)
             {
-                if(0 == strncmp(get_app_name(i), cmd.app_name, MAX_APP_NAME_LENGTH - 1))
+                if(!all && 0 != strncmp(get_app_name(i), cmd.app_name, MAX_APP_NAME_LENGTH - 1))
                 {
-                    app_index = i;
-                    break;
-                }
-            }
-
-            if(app_index >= 0)
-            {
-                Application_t *apps = apps_get_array();
-                Application_t *app = &apps[app_index];
-
-                // Determine status string
-                const char *status = "unknown";
-                if(!app->started)
-                {
-                    status = "stopped";
-                }
-                else if(process_is_running(app_index))
-                {
-                    status = "running";
-                }
-                else if(app->in_cooldown)
-                {
-                    status = "cooldown";
-                }
-                else if(app->circuit_state == 1) // OPEN
-                {
-                    status = "circuit_open";
-                }
-                else
-                {
-                    status = "crashed";
+                    continue;
                 }
 
-                // Determine circuit state string
-                const char *circuit = "unknown";
-                if(app->circuit_breaker_threshold > 0)
-                {
-                    if(app->circuit_state == 0) // CLOSED
-                        circuit = "closed";
-                    else if(app->circuit_state == 1) // OPEN
-                        circuit = "open";
-                    else if(app->circuit_state == 2) // HALF_OPEN
-                        circuit = "half_open";
-                }
-                else
-                {
-                    circuit = "disabled";
-                }
-
-                // Check if ack required
-                bool ack_required = false;
-                if(app->in_cooldown && app->cooldown_manual_ack_threshold > 0 &&
-                   app->cooldown_count >= app->cooldown_manual_ack_threshold)
-                {
-                    ack_required = true;
-                }
-
-                // Calculate cooldown remaining
-                int cooldown_remaining = 0;
-                if(app->in_cooldown)
-                {
-                    long now = get_monotonic_time();
-                    if(now < app->cooldown_end_time)
-                    {
-                        cooldown_remaining = (int)(app->cooldown_end_time - now);
-                    }
-                    else
-                    {
-                        cooldown_remaining = 0;
-                    }
-                }
-
-                // Build response JSON-like string
                 char response[256];
-                snprintf(response, sizeof(response),
-                         "{\"app\":\"%s\",\"status\":\"%s\",\"circuit\":\"%s\",\"cooldown\":%d,\"failures\":%d,\"ack_required\":%s}",
-                         app->name, status, circuit, cooldown_remaining, app->failure_count,
-                         ack_required ? "true" : "false");
+                if(build_status_json(i, response, sizeof(response)) < 0)
+                {
+                    continue;
+                }
 
-                // Log and send response (for now, just log it)
-                LOGN("Status response for %s: %s", app->name, response);
-                
-                // Send response to UDP client
-                const char *sender_ip = udp_get_last_sender_ip();
-                int sender_port = udp_get_last_sender_port();
-                
-                if(sender_port > 0)
-                {
-                    udp_send(socket, response, strlen(response), sender_ip, sender_port);
-                    LOGN("Status response for %s sent to %s:%d", app->name, sender_ip, sender_port);
-                }
-                else
-                {
-                    LOGE("Status response failed: no sender address available");
-                }
-            }
-            else
-            {
-                LOGE("Status command: app %s not found", cmd.app_name);
+                udp_send(socket, response, strlen(response), sender_ip, sender_port);
+                LOGN("Status response for %s sent to %s:%d: %s",
+                     get_app_name(i), sender_ip, sender_port, response);
             }
         }
         break;
@@ -259,8 +183,8 @@ extern int opterr, optind;
 
 #define APPNAME     basename(argv[0])
 #define VERSION     "1.4.5"
-#define OPTSTR      "i:v:t:h"
-#define USAGE_FMT   "%s -i <file.ini> [-v|--version] [-h|--help] [-t testname]\n"
+#define OPTSTR      "i:v:t:s::jh"
+#define USAGE_FMT   "%s -i <file.ini> [-v|--version] [-h|--help] [-t testname] [-s[app]] [-j]\n"
 
 static const struct option long_options[] =
 {
@@ -347,8 +271,13 @@ void help(char *progname)
             "- " FILECMD_RESTARTAPP "\n"
             "- " FILECMD_REBOOT "\n");
     fprintf(stderr, GREEN "\nUDP commands:\n" RESET
-            "- s<app>    : Get status of <app>\n"
+            "- s<app>    : Get status of <app> (empty/'*' name = all apps)\n"
             "  Response: JSON with status, circuit state, cooldown info, ack requirement\n");
+    fprintf(stderr, GREEN "\nStatus client (queries a running watchdog and exits):\n" RESET
+            "  %s -i <file.ini> -s          : status of all apps (table)\n"
+            "  %s -i <file.ini> -s<app>     : status of one app\n"
+            "  %s -i <file.ini> -s -j       : raw JSON output\n",
+            progname, progname, progname);
     fprintf(stderr, GREEN "\nINI File example config:\n" RESET
             "[processWatchdog]\n"
             "udp_port = 12345\n"
@@ -402,6 +331,11 @@ int main(int argc, char *argv[])
 {
     int opt;
     opterr = 0;
+    // Client mode: -s [app] queries the running watchdog and exits. Resolved after the
+    // config is loaded (we need the UDP port and, for all-apps, the app list).
+    bool status_query = false;
+    bool status_json = false;
+    const char *status_app = NULL;
     // sigaction (no SA_RESTART): a signal interrupts the UDP poll; udp_poll treats EINTR as
     // "no data", so the shutdown flags set by a handler are seen on the next loop iteration.
     struct sigaction sa;
@@ -439,6 +373,15 @@ int main(int argc, char *argv[])
                 exit(EXIT_NORMALLY);
                 break;
 
+            case 's': // status query client: -s [app] (optarg NULL => all apps)
+                status_query = true;
+                status_app = optarg;
+                break;
+
+            case 'j': // raw JSON output for the status client
+                status_json = true;
+                break;
+
             case 'h': // help
                 usage(APPNAME, opt);
                 help(APPNAME);
@@ -448,6 +391,19 @@ int main(int argc, char *argv[])
             default:
                 break;
         }
+    }
+
+    // Client mode (-s): load the config for the port + app list, query the running
+    // watchdog, print the result and exit. Must run before the daemon banner / startup.
+    if(status_query)
+    {
+        if(read_ini_file())
+        {
+            exit(EXIT_CRASHED);
+        }
+
+        exit(status_client(status_app, get_udp_port(), status_json) == 0
+             ? EXIT_NORMALLY : EXIT_CRASHED);
     }
 
     LOGN("%s started v:%s", APPNAME, VERSION);

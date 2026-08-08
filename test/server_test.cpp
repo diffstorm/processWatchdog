@@ -5,6 +5,7 @@ extern "C" {
 #include "cmd.h"
 #include "process.h"
 #include "utils.h"
+#include "status.h"
 }
 
 // UDP server can bind and unbind a port.
@@ -79,4 +80,25 @@ TEST(ProcessTest, BackoffDelay)
     EXPECT_EQ(calculate_backoff_delay(40, 1), 3600);     // huge shift -> capped
     EXPECT_EQ(calculate_backoff_delay(1, 100000), 3600); // huge base -> capped
     EXPECT_EQ(calculate_backoff_delay(0, 1), 1);         // shift clamped to 0
+}
+
+// Status JSON contract: the client's field reader must round-trip every field the server
+// emits, and report a missing key. This is the wire contract between server and client.
+TEST(StatusTest, ExtractFieldRoundTrip)
+{
+    const char *json =
+        "{\"app\":\"Bot\",\"status\":\"running\",\"circuit\":\"closed\","
+        "\"cooldown\":45,\"failures\":2,\"ack_required\":true}";
+    char v[32];
+
+    EXPECT_EQ(status_extract_field(json, "app", v, sizeof(v)), 0);
+    EXPECT_STREQ(v, "Bot");
+    EXPECT_EQ(status_extract_field(json, "status", v, sizeof(v)), 0);
+    EXPECT_STREQ(v, "running");
+    EXPECT_EQ(status_extract_field(json, "cooldown", v, sizeof(v)), 0);
+    EXPECT_STREQ(v, "45");
+    EXPECT_EQ(status_extract_field(json, "ack_required", v, sizeof(v)), 0);
+    EXPECT_STREQ(v, "true");
+
+    EXPECT_EQ(status_extract_field(json, "missing", v, sizeof(v)), -1);
 }
