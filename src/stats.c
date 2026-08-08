@@ -408,6 +408,26 @@ void stats_update_memory_usage(int index, int pid)
     }
 }
 
+float stats_get_cpu_percent(int index)
+{
+    if(index < 0 || index >= MAX_APPS)
+    {
+        return 0.0f;
+    }
+
+    return stats[index].current_cpu_percent;
+}
+
+size_t stats_get_memory_kb(int index)
+{
+    if(index < 0 || index >= MAX_APPS)
+    {
+        return 0;
+    }
+
+    return stats[index].current_memory_kb;
+}
+
 #define DATE_BUFFER_SIZE 22
 
 static char *printDate(const time_t *t, char *buf, size_t buf_size)

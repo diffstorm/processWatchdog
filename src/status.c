@@ -11,6 +11,7 @@
 #include "apps.h"
 #include "process.h"
 #include "server.h"
+#include "stats.h"
 #include "utils.h"
 
 #include <stdio.h>
@@ -85,10 +86,16 @@ int build_status_json(int app_index, char *buf, size_t size)
         }
     }
 
+    // pid is 0 when not running; cpu/mem are the most recent samples the watchdog collected.
+    int pid = get_app_pid(app_index);
+    float cpu = stats_get_cpu_percent(app_index);
+    size_t mem_kb = stats_get_memory_kb(app_index);
+
     int n = snprintf(buf, size,
-                     "{\"app\":\"%s\",\"status\":\"%s\",\"circuit\":\"%s\",\"cooldown\":%d,\"failures\":%d,\"ack_required\":%s}",
-                     app->name, status, circuit, cooldown_remaining, app->failure_count,
-                     ack_required ? "true" : "false");
+                     "{\"app\":\"%s\",\"status\":\"%s\",\"circuit\":\"%s\",\"pid\":%d,"
+                     "\"cpu\":%.2f,\"mem_kb\":%zu,\"cooldown\":%d,\"failures\":%d,\"ack_required\":%s}",
+                     app->name, status, circuit, pid, cpu, mem_kb,
+                     cooldown_remaining, app->failure_count, ack_required ? "true" : "false");
 
     if(n < 0 || (size_t)n >= size)
     {
@@ -170,16 +177,27 @@ static int status_query_one(const char *msg, int port, char *reply, int reply_si
     return rc;
 }
 
-// Prints one JSON reply as an aligned table row.
+#define STATUS_HEADER_FMT "%-20s %-13s %-10s %7s %6s %10s %8s %6s %5s\n"
+
+static void print_status_header(void)
+{
+    printf(STATUS_HEADER_FMT, "APP", "STATUS", "CIRCUIT", "PID", "CPU%", "MEM(KB)", "COOLDOWN", "FAILS", "ACK");
+}
+
+// Prints one JSON reply as an aligned table row (dashes for any missing field).
 static void print_status_row(const char *name, const char *json)
 {
-    char status[32] = "-", circuit[32] = "-", cooldown[16] = "-", failures[16] = "-", ack[8] = "-";
+    char status[32] = "-", circuit[32] = "-", pid[12] = "-", cpu[12] = "-",
+         mem[16] = "-", cooldown[12] = "-", failures[12] = "-", ack[8] = "-";
     status_extract_field(json, "status", status, sizeof(status));
     status_extract_field(json, "circuit", circuit, sizeof(circuit));
+    status_extract_field(json, "pid", pid, sizeof(pid));
+    status_extract_field(json, "cpu", cpu, sizeof(cpu));
+    status_extract_field(json, "mem_kb", mem, sizeof(mem));
     status_extract_field(json, "cooldown", cooldown, sizeof(cooldown));
     status_extract_field(json, "failures", failures, sizeof(failures));
     status_extract_field(json, "ack_required", ack, sizeof(ack));
-    printf("%-20s %-13s %-10s %8s %8s %6s\n", name, status, circuit, cooldown, failures, ack);
+    printf(STATUS_HEADER_FMT, name, status, circuit, pid, cpu, mem, cooldown, failures, ack);
 }
 
 int status_client(const char *app, int port, int json_mode)
@@ -190,7 +208,7 @@ int status_client(const char *app, int port, int json_mode)
 
     if(!json_mode)
     {
-        printf("%-20s %-13s %-10s %8s %8s %6s\n", "APP", "STATUS", "CIRCUIT", "COOLDOWN", "FAILS", "ACK");
+        print_status_header();
     }
 
     if(all)

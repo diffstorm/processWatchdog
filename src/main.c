@@ -135,6 +135,18 @@ void parse_commands(char *data, int length, int socket)
         }
         break;
 
+        case NET_CMD_RESUME:
+        {
+            for(int i = 0; i < get_app_count(); i++)
+            {
+                if(0 == strncmp(get_app_name(i), cmd.app_name, MAX_APP_NAME_LENGTH - 1))
+                {
+                    process_resume(i);
+                }
+            }
+        }
+        break;
+
         case NET_CMD_STATUS:
         {
             const char *sender_ip = udp_get_last_sender_ip();
@@ -272,7 +284,8 @@ void help(char *progname)
             "- " FILECMD_REBOOT "\n");
     fprintf(stderr, GREEN "\nUDP commands:\n" RESET
             "- s<app>    : Get status of <app> (empty/'*' name = all apps)\n"
-            "  Response: JSON with status, circuit state, cooldown info, ack requirement\n");
+            "  Response: JSON with status, circuit, pid, cpu, mem, cooldown, failures, ack\n"
+            "- k<app>    : Resume <app> after a manual cooldown ack\n");
     fprintf(stderr, GREEN "\nStatus client (queries a running watchdog and exits):\n" RESET
             "  %s -i <file.ini> -s          : status of all apps (table)\n"
             "  %s -i <file.ini> -s<app>     : status of one app\n"
@@ -559,17 +572,8 @@ int main(int argc, char *argv[])
                 }
                 else if(filecmd_resume(i))
                 {
-                    Application_t *apps = apps_get_array();
-                    Application_t *app = &apps[i];
-                    
-                    LOGN("Manual ack received for %s, resuming operations", get_app_name(i));
-                    process_restart(i);
+                    process_resume(i);
                     filecmd_remove_resume(i);
-                    
-                    // Reset cooldown state
-                    app->in_cooldown = false;
-                    app->cooldown_count = 0;
-                    app->circuit_state = 0; // CLOSED
                 }
             }
             else

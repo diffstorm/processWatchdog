@@ -95,10 +95,19 @@ net_command_t cmd_parse_network(const char *data, int length)
         }
         break;
 
-        case 's': // Status : s<name> ? sBot
+        case 's': // Status : s<name> e.g. sBot
         {
             LOGD("Status command received: %s", data);
             cmd.type = NET_CMD_STATUS;
+            strncpy(cmd.app_name, &data[1], MAX_APP_NAME_LENGTH - 1);
+            cmd.app_name[MAX_APP_NAME_LENGTH - 1] = '\0';
+        }
+        break;
+
+        case 'k': // resume (manual cooldown ack) : k<name> e.g. kBot
+        {
+            LOGD("Resume command received: %s", data);
+            cmd.type = NET_CMD_RESUME;
             strncpy(cmd.app_name, &data[1], MAX_APP_NAME_LENGTH - 1);
             cmd.app_name[MAX_APP_NAME_LENGTH - 1] = '\0';
         }

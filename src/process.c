@@ -563,7 +563,7 @@ void process_restart(int app_index)
         // Use heartbeat module to update heartbeat time
         heartbeat_update_time(app_index);
         LOGI("Process %s restarted successfully", app->name);
-        
+
         // Reset circuit-breaker on success
         if(app->circuit_breaker_threshold > 0)
         {
@@ -574,4 +574,17 @@ void process_restart(int app_index)
             app->in_cooldown = false;
         }
     }
+}
+
+void process_resume(int app_index)
+{
+    Application_t *app = &apps_get_array()[app_index];
+
+    LOGN("Manual ack received for %s, resuming operations", app->name);
+    process_restart(app_index);
+
+    // Clear the anti-flap state so the app is eligible to run again.
+    app->in_cooldown = false;
+    app->cooldown_count = 0;
+    app->circuit_state = 0; // CLOSED
 }

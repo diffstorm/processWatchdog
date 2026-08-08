@@ -31,7 +31,7 @@ typedef enum
     NET_CMD_STOP,         /**< Stop command: o<name> */
     NET_CMD_RESTART,      /**< Restart command: r<name> */
     NET_CMD_STATUS,       /**< Status command: s<name> */
-    // TODO: Resume of an app waiting for manual ack
+    NET_CMD_RESUME,       /**< Resume after manual cooldown ack: k<name> */
     NET_CMD_UNKNOWN       /**< Unknown or invalid command */
 } net_command_type_t;
 
