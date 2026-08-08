@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.4] - 2026-08-08
+
+### Added
+- **Circuit-Breaker (Anti-Flap)**: Prevents cascading failures by opening circuit after repeated failures
+  - New `circuit_breaker_threshold` config (0 = disabled, N = failures to open)
+  - New `circuit_breaker_window` config (default: 300s/5min for failure counting)
+  - Circuit states: CLOSED → OPEN → HALF_OPEN (after 2x window)
+  - Automatic retry after circuit opens (one trial)
+  - Full exponential backoff integration
+  - Clear log messages for state transitions
+
+- **Cooldown (Anti-Flap)**: Prevents rapid restart loops with waiting period
+  - New `cooldown_period` config (0 = disabled, N = seconds to wait)
+  - New `cooldown_manual_ack_threshold` config (0 = auto-resume, N = require ack after N cooldowns)
+  - Manual acknowledgment via `resume<app>` file command
+  - Status logging during cooldown period
+  - Automatic resume after cooldown if threshold not reached
+
+- **File Command**: Manual acknowledgment for cooldown
+  - `resume<app>` - Resume a cooled-down app after manual review
+
+### Changed
+- Updated help section in binary to document new config options
+- Updated README.md with concise circuit-breaker and cooldown documentation
+- Added FlapTest app to config.ini as example
+
 ## [1.4.3] - 2026-07-30
 
 ### Added

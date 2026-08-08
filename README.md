@@ -212,10 +212,38 @@ cmd = /usr/bin/python test_child.py 6 crash 10
 - `max_retries` : Optional. Maximum number of retry attempts for restart policy. Set to `0` to disable backoff (current behavior - immediate restart). Default: `0`.
 - `base_delay` : Optional. Base delay in seconds for exponential backoff calculation. Only used when `max_retries > 0`. Default: `1`.
 - `stop_timeout` : Optional. Seconds to wait for graceful shutdown before sending SIGKILL. Default: `10`.
-- `circuit_breaker_threshold` : Optional. Number of failures to open circuit-breaker (`0`:disabled). Default: `0`.
-- `circuit_breaker_window` : Optional. Window in seconds for failure counting (default: `300`/5 min). Only used when `circuit_breaker_threshold > 0`.
-- `cooldown_period` : Optional. Seconds to wait before auto-resume after circuit opens (`0`:disabled). Default: `0`.
-- `cooldown_manual_ack_threshold` : Optional. Require manual ack after N cooldowns (`0`:auto-resume always). Default: `0`.
+
+### Circuit-Breaker & Cooldown (Anti-Flap)
+
+These features prevent cascading failures in production bot fleets.
+
+#### Circuit-Breaker
+
+Open circuit after repeated failures within a time window.
+
+```ini
+circuit_breaker_threshold = 5
+circuit_breaker_window = 300
+```
+
+- `0` = disabled (default)
+- N > 0 = open circuit after N failures in window
+
+#### Cooldown
+
+Wait period after circuit opens, with optional manual acknowledgment.
+
+```ini
+cooldown_period = 120
+cooldown_manual_ack_threshold = 3
+```
+
+- `cooldown_period = 0` = disabled (default)
+- `cooldown_period > 0` = wait N seconds before auto-resume
+- `cooldown_manual_ack_threshold = 0` = auto-resume always
+- `cooldown_manual_ack_threshold > 0` = require manual ack after N cooldowns
+
+**Manual Ack File Command:** Create `resume<app>` to manually resume after cooldown.
 
 ### Restart Policy with Exponential Backoff
 
