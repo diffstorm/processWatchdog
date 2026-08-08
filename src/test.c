@@ -108,6 +108,26 @@ static int test_config_parse(void)
         }
     }
 
+    // An app name with a character outside [A-Za-z0-9_-] must be rejected at load time
+    // (it would otherwise break the status JSON / file-command filenames).
+    const char *bad = "test_pw_badname.ini";
+    FILE *bf = fopen(bad, "w");
+    if(bf)
+    {
+        fprintf(bf, "[processWatchdog]\nudp_port = 12345\n\n"
+                    "[app:bad\"name]\nheartbeat_interval = 15\ncmd = /bin/true\n");
+        fclose(bf);
+
+        Application_t apps2[MAX_APPS];
+        AppState_t state2 = {0};
+        if(config_parse_file(bad, apps2, MAX_APPS, &state2) == 0)
+        {
+            printf("config_parse: an invalid app name was NOT rejected\n");
+            pass = 0;
+        }
+        remove(bad);
+    }
+
     return pass ? 0 : 1;
 }
 

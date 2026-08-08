@@ -83,3 +83,6 @@ stats_*.log
 stats_*.raw
 test_pw_*.ini
 test_progress_timeout.ini
+
+# Generated transfer artifacts
+*.patch

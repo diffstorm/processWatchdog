@@ -68,6 +68,18 @@ static int config_ini_handler(void *user, const char *section, const char *name,
                     return 0; // Error
                 }
 
+                // Restrict names to [A-Za-z0-9_-]: they flow into the status JSON (unescaped)
+                // and into file-command filenames, so reject anything else at load time.
+                for(const char *c = app_name; *c; c++)
+                {
+                    if(!((*c >= 'A' && *c <= 'Z') || (*c >= 'a' && *c <= 'z') ||
+                         (*c >= '0' && *c <= '9') || *c == '_' || *c == '-'))
+                    {
+                        LOGE("Invalid app name [%s]: only A-Za-z0-9_- allowed", section);
+                        return 0; // Error
+                    }
+                }
+
                 strncpy(apps[state->app_count].name, app_name, MAX_APP_NAME_LENGTH - 1);
                 apps[state->app_count].name[MAX_APP_NAME_LENGTH - 1] = '\0';
                 state->app_count++;

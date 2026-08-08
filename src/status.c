@@ -86,10 +86,16 @@ int build_status_json(int app_index, char *buf, size_t size)
         }
     }
 
-    // pid is 0 when not running; cpu/mem are the most recent samples the watchdog collected.
+    // Report live resource use only while running; a stopped app reports pid 0 and 0 usage
+    // rather than the last frozen sample.
     int pid = get_app_pid(app_index);
-    float cpu = stats_get_cpu_percent(app_index);
-    size_t mem_kb = stats_get_memory_kb(app_index);
+    float cpu = 0.0f;
+    size_t mem_kb = 0;
+    if(process_is_running(app_index))
+    {
+        cpu = stats_get_cpu_percent(app_index);
+        mem_kb = stats_get_memory_kb(app_index);
+    }
 
     int n = snprintf(buf, size,
                      "{\"app\":\"%s\",\"status\":\"%s\",\"circuit\":\"%s\",\"pid\":%d,"
@@ -200,16 +206,42 @@ static void print_status_row(const char *name, const char *json)
     printf(STATUS_HEADER_FMT, name, status, circuit, pid, cpu, mem, cooldown, failures, ack);
 }
 
+// Queries one app and prints its result. Prints the table header lazily on the first
+// response (so a fully-unresponsive watchdog shows a clear message, not an empty table).
+// Returns 1 if the app responded, 0 otherwise. *header_printed tracks the lazy header.
+static int status_query_and_print(const char *name, int port, int json_mode, bool *header_printed)
+{
+    char msg[MAX_APP_NAME_LENGTH + 1];
+    snprintf(msg, sizeof(msg), "s%s", name);
+
+    char reply[256];
+    if(status_query_one(msg, port, reply, sizeof(reply)) <= 0)
+    {
+        return 0;
+    }
+
+    if(json_mode)
+    {
+        printf("%s\n", reply);
+    }
+    else
+    {
+        if(!*header_printed)
+        {
+            print_status_header();
+            *header_printed = true;
+        }
+        print_status_row(name, reply);
+    }
+
+    return 1;
+}
+
 int status_client(const char *app, int port, int json_mode)
 {
     bool all = (app == NULL || app[0] == '\0' || strcmp(app, "*") == 0);
+    bool header_printed = false;
     int responded = 0;
-    char reply[256];
-
-    if(!json_mode)
-    {
-        print_status_header();
-    }
 
     if(all)
     {
@@ -222,45 +254,18 @@ int status_client(const char *app, int port, int json_mode)
 
         for(int i = 0; i < count; i++)
         {
-            char msg[MAX_APP_NAME_LENGTH + 1];
-            snprintf(msg, sizeof(msg), "s%s", get_app_name(i));
+            responded += status_query_and_print(get_app_name(i), port, json_mode, &header_printed);
+        }
 
-            if(status_query_one(msg, port, reply, sizeof(reply)) > 0)
-            {
-                responded++;
-                if(json_mode)
-                {
-                    printf("%s\n", reply);
-                }
-                else
-                {
-                    print_status_row(get_app_name(i), reply);
-                }
-            }
-            else if(!json_mode)
-            {
-                print_status_row(get_app_name(i), "");    // prints dashes = no response
-            }
+        if(responded == 0)
+        {
+            fprintf(stderr, "No apps responded (is the watchdog running on port %d?)\n", port);
         }
     }
     else
     {
-        char msg[MAX_APP_NAME_LENGTH + 1];
-        snprintf(msg, sizeof(msg), "s%s", app);
-
-        if(status_query_one(msg, port, reply, sizeof(reply)) > 0)
-        {
-            responded++;
-            if(json_mode)
-            {
-                printf("%s\n", reply);
-            }
-            else
-            {
-                print_status_row(app, reply);
-            }
-        }
-        else
+        responded = status_query_and_print(app, port, json_mode, &header_printed);
+        if(responded == 0)
         {
             fprintf(stderr, "No response for '%s' (is the watchdog running on port %d?)\n", app, port);
         }
