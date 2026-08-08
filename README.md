@@ -212,6 +212,10 @@ cmd = /usr/bin/python test_child.py 6 crash 10
 - `max_retries` : Optional. Maximum number of retry attempts for restart policy. Set to `0` to disable backoff (current behavior - immediate restart). Default: `0`.
 - `base_delay` : Optional. Base delay in seconds for exponential backoff calculation. Only used when `max_retries > 0`. Default: `1`.
 - `stop_timeout` : Optional. Seconds to wait for graceful shutdown before sending SIGKILL. Default: `10`.
+- `circuit_breaker_threshold` : Optional. Number of failures to open circuit-breaker (`0`:disabled). Default: `0`.
+- `circuit_breaker_window` : Optional. Window in seconds for failure counting (default: `300`/5 min). Only used when `circuit_breaker_threshold > 0`.
+- `cooldown_period` : Optional. Seconds to wait before auto-resume after circuit opens (`0`:disabled). Default: `0`.
+- `cooldown_manual_ack_threshold` : Optional. Require manual ack after N cooldowns (`0`:auto-resume always). Default: `0`.
 
 ### Restart Policy with Exponential Backoff
 
@@ -267,6 +271,80 @@ With `base_delay = 1`:
 - **Retry Count**: Incremented on process failure, reset to `0` on successful start
 - **Failure Logging**: When max retries reached, logs permanent failure with retry count
 - **Backoff Logging**: During backoff wait, logs remaining delay time
+
+### Circuit-Breaker and Cooldown
+
+The watchdog supports circuit-breaker and cooldown features for production bot fleets to prevent cascading failures.
+
+#### Circuit-Breaker
+
+Circuit-breaker prevents restart attempts after repeated failures within a time window:
+
+```ini
+[app:Bot]
+start_delay = 20
+heartbeat_delay = 90
+heartbeat_interval = 30
+cmd = /usr/bin/python bot.py
+
+# Circuit-breaker: 5 failures in 5 minutes opens circuit
+circuit_breaker_threshold = 5
+circuit_breaker_window = 300
+```
+
+**Behavior:**
+- Circuit starts `CLOSED`, accepts restarts
+- After `circuit_breaker_threshold` failures in window, circuit `OPEN`s
+- No restarts while `OPEN`
+- After `2x circuit_breaker_window`, circuit goes `HALF_OPEN`
+- One trial restart allowed; if success, resets to `CLOSED`
+
+#### Cooldown
+
+Cooldown adds a waiting period after circuit opens, with optional manual acknowledgment:
+
+```ini
+[app:Bot]
+# Cooldown: wait 2 minutes before auto-resume
+cooldown_period = 120
+# Require manual ack after 3 cooldowns
+cooldown_manual_ack_threshold = 3
+```
+
+**Behavior:**
+- `cooldown_period = 0`: Disabled (no cooldown)
+- `cooldown_period > 0`: Wait period after circuit opens
+- `cooldown_manual_ack_threshold = 0`: Auto-resume after cooldown
+- `cooldown_manual_ack_threshold > 0`: Require manual ack after N cooldowns
+
+#### File Command for Manual Ack
+
+Create `resume<app>` file to manually acknowledge and resume:
+
+```bash
+touch resumebot    # Resumes the Bot app
+```
+
+The watchdog detects this file, removes it, and resumes the application.
+
+#### Complete Anti-Flap Example
+
+```ini
+[app:Bot]
+start_delay = 20
+heartbeat_delay = 90
+heartbeat_interval = 30
+progress_timeout = 60
+cmd = /usr/bin/python bot.py
+
+# Circuit-breaker
+circuit_breaker_threshold = 5
+circuit_breaker_window = 300
+
+# Cooldown
+cooldown_period = 120
+cooldown_manual_ack_threshold = 3
+```
 
 ## Heartbeat Message
 For heartbeat sending processes : A heartbeat message is a UDP packet with the process ID (`PID`) prefixed by `p` (e.g., `p12345` for PID `12345`). It is sent periodically by every managed process to a specified UDP port.
