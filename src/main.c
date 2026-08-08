@@ -273,31 +273,33 @@ static volatile sig_atomic_t kill_error = 10; // after 10 times SIGUSR1 the app 
 static volatile sig_atomic_t main_alive = 1; // terminate application (1=true, 0=false)
 static volatile sig_atomic_t return_code = EXIT_NORMALLY;
 
+// Signal handlers are async-signal-safe: they only set sig_atomic_t flags. The main loop
+// observes main_alive == 0, logs the cause (from return_code) and shuts down cleanly.
+// Logging / exit() are NOT called here — iLOG locks a non-recursive mutex and uses
+// fprintf/fopen, so doing that from signal context could self-deadlock the daemon.
+
 // send signal INT to restart application
 void SIGINT_handler(int sig)
 {
     UNUSED(sig);
-    LOGN("INT detected, Restarting");
-    main_alive = 0;
     return_code = EXIT_RESTART;
+    main_alive = 0;
 }
 
 // send signal QUIT to reboot the system
 void SIGQUIT_handler(int sig)
 {
     UNUSED(sig);
-    LOGN("QUIT detected, Rebooting");
-    main_alive = 0;
     return_code = EXIT_REBOOT;
+    main_alive = 0;
 }
 
 // send signal USR1 to terminate application
 void SIGUSR1_handler(int sig)
 {
     UNUSED(sig);
-    LOGN("USR1 detected, Terminating");
-    main_alive = 0;
     return_code = EXIT_NORMALLY;
+    main_alive = 0;
 
     if(kill_error > 0)
     {
@@ -305,8 +307,9 @@ void SIGUSR1_handler(int sig)
     }
     else
     {
-        LOGE("10x USR1 detected, Terminating forcefully");
-        exit(EXIT_NORMALLY);
+        // Emergency escape after 10x USR1: _exit (not exit) — no atexit/stdio flush from
+        // signal context. A clean shutdown is the normal (kill_error > 0) path.
+        _exit(EXIT_NORMALLY);
     }
 }
 
@@ -314,7 +317,6 @@ void SIGUSR1_handler(int sig)
 void SIGUSR2_handler(int sig)
 {
     UNUSED(sig);
-    LOGN("USR2 detected");
 }
 
 void usage(char *progname, int opt)
@@ -402,12 +404,20 @@ int main(int argc, char *argv[])
 {
     int opt;
     opterr = 0;
-    // Setup signal handlers
-    signal(SIGINT, SIGINT_handler); // restart
-    signal(SIGTERM, SIGINT_handler); // terminate
-    signal(SIGQUIT, SIGQUIT_handler); // reboot
-    signal(SIGUSR1, SIGUSR1_handler); // terminate
-    signal(SIGUSR2, SIGUSR2_handler); // rfu
+    // Setup signal handlers via sigaction (well-defined mask semantics; no SA_RESTART so a
+    // signal still interrupts the UDP poll — udp_poll already handles EINTR gracefully).
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sigemptyset(&sa.sa_mask);
+    sa.sa_handler = SIGINT_handler; // restart
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);  // terminate
+    sa.sa_handler = SIGQUIT_handler; // reboot
+    sigaction(SIGQUIT, &sa, NULL);
+    sa.sa_handler = SIGUSR1_handler; // terminate
+    sigaction(SIGUSR1, &sa, NULL);
+    sa.sa_handler = SIGUSR2_handler; // rfu
+    sigaction(SIGUSR2, &sa, NULL);
 
     // Scan parameters
     while((opt = getopt_long(argc, argv, OPTSTR, long_options, NULL)) != -1)
@@ -696,6 +706,16 @@ int main(int argc, char *argv[])
         }
 
 #endif
+    }
+
+    // Log the shutdown cause here (in the main thread) rather than in the signal handlers,
+    // which must stay async-signal-safe. Mirrors the messages the handlers used to print.
+    switch(return_code)
+    {
+        case EXIT_RESTART:  LOGN("INT/TERM detected, Restarting"); break;
+        case EXIT_REBOOT:   LOGN("QUIT detected, Rebooting"); break;
+        case EXIT_NORMALLY: LOGN("USR1 detected, Terminating"); break;
+        default: break;
     }
 
     LOGD("%s ending...", APPNAME);
