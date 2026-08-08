@@ -365,7 +365,11 @@ int config_parse_file(const char *ini_path, Application_t *apps, int max_apps, A
             apps[i].stop_timeout = 10; // Default stop timeout is 10 seconds
         }
 
-        apps[i].progress_timeout = 0;
+        // NOTE: do NOT reset progress_timeout here — it is parsed per-app above
+        // (config_ini_handler, "progress_timeout" key) and memset to 0 at the top of
+        // this function for apps that omit it. A previous unconditional
+        // "apps[i].progress_timeout = 0;" here silently disabled the entire
+        // progress/stagnation-detection feature for every app.
         apps[i].last_progress_time = (time_t)get_monotonic_time();
         // Initialize retry_count and last_failure_time
         apps[i].retry_count = 0;

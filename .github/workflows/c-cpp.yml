@@ -29,6 +29,14 @@ jobs:
           ./processWatchdog -t heartbeat_parse
           ./processWatchdog -t circuit_breaker
           ./processWatchdog -t cooldown
+          ./processWatchdog -t progress_timeout_config
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: processWatchdog-linux-x86_64
+          path: processWatchdog
+          if-no-files-found: error
 
       - name: Run watchdog
         run: |
@@ -82,3 +90,4 @@ jobs:
         with:
           tag_name: v${{ steps.get_version.outputs.version }}
           generate_release_notes: true
+          files: processWatchdog   # attach the built Linux x86-64 binary as a release asset

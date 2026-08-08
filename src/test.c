@@ -19,11 +19,16 @@
 */
 
 #include "apps.h"
+#include "config.h"
 #include "server.h"
 #include "filecmd.h"
 #include "log.h"
 #include "utils.h"
 #include "cmd.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 /* internal macros */
 #define cmp(x)  if(0 == strcmp(testname, x))
@@ -178,6 +183,77 @@ int test_cooldown()
     return pass;
 }
 
+/*
+    Regression test for the progress_timeout config-parsing bug: a configured
+    progress_timeout must survive config_parse_file() (it was previously reset to 0
+    unconditionally after parsing, silently disabling stagnation detection), while an
+    app that omits the key must default to 0 (feature disabled).
+*/
+int test_progress_timeout_config()
+{
+    int pass = 1;
+    const char *path = "test_progress_timeout.ini";
+
+    FILE *f = fopen(path, "w");
+    if(!f)
+    {
+        printf("progress_timeout config: could not create temp ini\n");
+        return 0;
+    }
+    fprintf(f,
+            "[processWatchdog]\n"
+            "udp_port = 12345\n"
+            "\n"
+            "[app:WithProgress]\n"
+            "start_delay = 5\n"
+            "heartbeat_delay = 10\n"
+            "heartbeat_interval = 15\n"
+            "progress_timeout = 30\n"
+            "cmd = /bin/true\n"
+            "\n"
+            "[app:NoProgress]\n"
+            "start_delay = 5\n"
+            "heartbeat_delay = 10\n"
+            "heartbeat_interval = 15\n"
+            "cmd = /bin/true\n");
+    fclose(f);
+
+    Application_t apps[MAX_APPS];
+    AppState_t state = {0};
+
+    if(config_parse_file(path, apps, MAX_APPS, &state) != 0)
+    {
+        printf("progress_timeout config: parse failed\n");
+        remove(path);
+        return 0;
+    }
+
+    if(state.app_count != 2)
+    {
+        printf("progress_timeout config: expected 2 apps, got %d\n", state.app_count);
+        pass = 0;
+    }
+
+    for(int i = 0; i < state.app_count; i++)
+    {
+        if(strcmp(apps[i].name, "WithProgress") == 0 && apps[i].progress_timeout != 30)
+        {
+            printf("progress_timeout config: WithProgress expected 30, got %d (B1 regression)\n",
+                   apps[i].progress_timeout);
+            pass = 0;
+        }
+        if(strcmp(apps[i].name, "NoProgress") == 0 && apps[i].progress_timeout != 0)
+        {
+            printf("progress_timeout config: NoProgress expected 0, got %d\n",
+                   apps[i].progress_timeout);
+            pass = 0;
+        }
+    }
+
+    remove(path);
+    return pass;
+}
+
 void test(char *testname)
 {
     if(0 == strlen(testname))
@@ -234,6 +310,10 @@ void test(char *testname)
     cmp("cooldown")
     {
         printf("Cooldown: %s\n", test_cooldown() ? "PASS" : "FAIL");
+    }
+    cmp("progress_timeout_config")
+    {
+        printf("Progress timeout config: %s\n", test_progress_timeout_config() ? "PASS" : "FAIL");
     }
     printf("Test finished\n");
 }
