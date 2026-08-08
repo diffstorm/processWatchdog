@@ -302,8 +302,19 @@ void stats_update_heartbeat_time(int index, time_t heartbeatTime)
 void stats_update_first_heartbeat_time(int index, time_t heartbeatTime)
 {
     int start_count = stats[index].start_count + stats[index].crash_count + stats[index].heartbeat_reset_count;
-    // Calculate average first heartbeat time
-    stats[index].avg_first_heartbeat_time = ((stats[index].avg_first_heartbeat_time * (start_count - 1)) + heartbeatTime) / start_count;
+    // Calculate average first heartbeat time. Guard the division (mirrors
+    // updateHeartbeatCountAverage): seed on the first sample, running-average after.
+    // start_count is 0 if a first heartbeat arrives for an app never counted as started,
+    // which would otherwise be a divide-by-zero (SIGFPE). For start_count == 1 the old
+    // formula already reduced to heartbeatTime, so this is byte-identical for count >= 1.
+    if(start_count <= 1)
+    {
+        stats[index].avg_first_heartbeat_time = heartbeatTime;
+    }
+    else
+    {
+        stats[index].avg_first_heartbeat_time = ((stats[index].avg_first_heartbeat_time * (start_count - 1)) + heartbeatTime) / start_count;
+    }
 
     // Update maximum first heartbeat time
     if(heartbeatTime > stats[index].max_first_heartbeat_time)
