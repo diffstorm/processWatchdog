@@ -72,3 +72,14 @@ Thumbs.db
 *.dll
 *.exe
 code_format.bat
+
+# Runtime / test artifacts
+# ------------------------
+processWatchdog
+crash_count
+crash_log
+wdt.log
+stats_*.log
+stats_*.raw
+test_pw_*.ini
+test_progress_timeout.ini

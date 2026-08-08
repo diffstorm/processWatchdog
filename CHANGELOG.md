@@ -6,18 +6,25 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - **UDP Status Command**: Get real-time status of processes via UDP
-  - New `s<app>` UDP command (e.g., `sBot` to check Bot status)
-  - JSON response with: app name, status, circuit state, cooldown remaining, failure count, ack requirement
+  - New `s<app>` UDP command (e.g., `sBot`); an empty or `*` name returns **all apps**
+  - JSON response with: app, status, circuit state, **pid, cpu, mem_kb**, cooldown remaining, failure count, ack requirement
   - Status values: `running`, `stopped`, `crashed`, `cooldown`, `circuit_open`
   - Circuit states: `closed`, `open`, `half_open`, `disabled` (if not configured)
   - `ack_required` field indicates if manual acknowledgment is needed before resuming
-  - Full integration with circuit-breaker and cooldown features
-  - Command available in help output (`-h` flag)
+- **Status client** (`-s [app]`, `-j` for raw JSON): query a running watchdog and print an
+  aligned table (or JSON), instead of hand-crafting UDP packets.
+- **Resume over UDP** (`k<app>`): clear cooldown / circuit-breaker state and restart — the
+  UDP equivalent of the `resume<app>` file command.
+- **Tests**: lean GTest unit/contract suite (parsing, backoff, status-JSON contract) and
+  `-t` integration checks (`config_parse`, `status_json`, `heartbeat_timeout`) run via
+  `-t all`; both wired into CI.
 
 ### Changed
-- Enabled control commands (`start<app>`, `stop<app>`, `restart<app>`, `s<app>`) via UDP
+- Enabled control commands (`start<app>`, `stop<app>`, `restart<app>`, `s<app>`, `k<app>`) via UDP
 - Server module now tracks sender address for UDP responses
-- Updated README.md with UDP status command documentation
+- `-t` now returns a pass/fail exit status (`-t all` gates CI); signal handlers log the
+  shutdown cause from the main loop, not from signal context
+- Updated README.md (quick-start, status client, testing model, UDP command reference)
 
 ### Fixed
 - **Progress/stagnation detection was silently disabled**: `config_parse_file()`

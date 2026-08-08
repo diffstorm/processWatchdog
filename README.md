@@ -948,17 +948,22 @@ Process Watchdog can be controlled using file commands:
 
 ## UDP Commands
 
-Query process status over the same UDP port used for heartbeats:
+Sent to the same UDP port used for heartbeats:
 
-- **Status Command:** `s<app>` - e.g., `sBot`
+- **Status:** `s<app>` (e.g. `sBot`; empty or `*` name = all apps) — replies with a JSON line per app.
+- **Resume:** `k<app>` — clears cooldown / circuit-breaker state and restarts the app (the UDP equivalent of the `resume<app>` file command).
+- **Control:** `a<app>` start, `o<app>` stop, `r<app>` restart.
 
-- **Response Format:** JSON with status information
+**Status response format** (one JSON object per app):
 
 ```json
 {
   "app": "Bot",
   "status": "running|stopped|crashed|cooldown|circuit_open",
   "circuit": "closed|open|half_open|disabled",
+  "pid": 4321,
+  "cpu": 0.50,
+  "mem_kb": 11908,
   "cooldown": 45,
   "failures": 2,
   "ack_required": true
@@ -967,9 +972,22 @@ Query process status over the same UDP port used for heartbeats:
 
 - `status`: Current process state
 - `circuit`: Circuit-breaker state (`disabled` if not configured)
+- `pid`: Process ID (0 if not running)
+- `cpu`: Most recent CPU usage percentage
+- `mem_kb`: Most recent memory usage in KB
 - `cooldown`: Seconds remaining in cooldown (0 if not in cooldown)
 - `failures`: Number of failures in current window
 - `ack_required`: `true` if manual acknowledgment is required
+
+### Status client
+
+Instead of crafting UDP packets, query a running watchdog directly and print the result:
+
+```bash
+./processWatchdog -i config.ini -s        # all apps, aligned table
+./processWatchdog -i config.ini -sBot     # one app
+./processWatchdog -i config.ini -s -j     # raw JSON lines (for scripts / jq)
+```
 
 ## Compilation
 A `Makefile` is included to compile the Process Watchdog application.
@@ -978,17 +996,32 @@ A `Makefile` is included to compile the Process Watchdog application.
 make
 ```
 
-## Building with CMake
+## Testing
 
-To build the project with CMake, you need CMake and GTest installed.
+The project has two complementary test suites, both run in CI:
+
+**Unit / contract tests (GTest)** — pure functions and wire formats (command parsing,
+number parsing, backoff math, the status-JSON contract). No I/O, deterministic. Built
+with CMake:
 
 ```bash
-mkdir build
-cd build
-cmake ..
+mkdir build && cd build
+cmake ..            # needs CMake + GTest
 make
-./test/unit_tests
+ctest --output-on-failure
 ```
+
+**Integration checks (`-t`)** — run through the built binary against real config parsing,
+the app array, status building and heartbeat logic. Useful to an operator on a host, and
+gated in CI. `-t all` runs every automated check and exits non-zero on any failure:
+
+```bash
+./processWatchdog -t all             # config_parse, status_json, heartbeat_timeout
+./processWatchdog -t config_parse    # run a single check
+```
+
+The `exit_*` names (`-t exit_crash`, …) are manual supervisor fixtures that exit with a
+specific code; they are not part of `-t all`.
 
 ## Systemd Service Installation (optional)
 
