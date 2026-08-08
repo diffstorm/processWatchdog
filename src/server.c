@@ -34,6 +34,10 @@
 
 static struct pollfd pfd;
 
+// Last sender information for UDP responses
+static char last_sender_ip[INET_ADDRSTRLEN] = "0.0.0.0";
+static int last_sender_port = 0;
+
 int udp_start(int *socketfd, int port)
 {
     struct sockaddr_in si_me;
@@ -111,6 +115,11 @@ static int udp_pollp(int socketfd, struct pollfd *pfd, int timeout, char *data, 
             }
 
             data[recv_len] = 0; // Add a string terminator
+            
+            // Store sender information for response
+            inet_ntop(AF_INET, &si_other.sin_addr, last_sender_ip, INET_ADDRSTRLEN);
+            last_sender_port = ntohs(si_other.sin_port);
+            LOGD("UDP received from %s:%d - %.*s", last_sender_ip, last_sender_port, recv_len, data);
         }
 
         if(recv_len == -1 && errno == EAGAIN)
@@ -126,8 +135,6 @@ static int udp_pollp(int socketfd, struct pollfd *pfd, int timeout, char *data, 
         }
 
         *len = recv_len;
-        // print the received message
-        LOGD("UDP received from %s:%d - %.*s", inet_ntoa(si_other.sin_addr), ntohs(si_other.sin_port), recv_len, data);
     }
 
     return 0;
@@ -136,6 +143,43 @@ static int udp_pollp(int socketfd, struct pollfd *pfd, int timeout, char *data, 
 int udp_poll(int socketfd, int timeout, char *data, int *len)
 {
     return udp_pollp(socketfd, &pfd, timeout, data, len);
+}
+
+int udp_send(int socketfd, const char *data, int len, const char *addr, int port)
+{
+    struct sockaddr_in si_other;
+    int slen = sizeof(si_other);
+    
+    memset((char *) &si_other, 0, sizeof(si_other));
+    si_other.sin_family = AF_INET;
+    si_other.sin_port = htons(port);
+    
+    if(inet_aton(addr, &si_other.sin_addr) == 0)
+    {
+        LOGE("Invalid IP address: %s", addr);
+        return 1;
+    }
+    
+    int sent = sendto(socketfd, data, len, 0, (struct sockaddr *)&si_other, slen);
+    
+    if(sent == -1)
+    {
+        LOGE("sendto error: %s", strerror(errno));
+        return 1;
+    }
+    
+    LOGD("UDP sent %d bytes to %s:%d", sent, addr, port);
+    return 0;
+}
+
+const char* udp_get_last_sender_ip(void)
+{
+    return last_sender_ip;
+}
+
+int udp_get_last_sender_port(void)
+{
+    return last_sender_port;
 }
 
 void udp_stop(int socketfd)

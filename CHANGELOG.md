@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.5] - 2026-08-08
+
+### Added
+- **UDP Status Command**: Get real-time status of processes via UDP
+  - New `s<app>` UDP command (e.g., `sBot` to check Bot status)
+  - JSON response with: app name, status, circuit state, cooldown remaining, failure count, ack requirement
+  - Status values: `running`, `stopped`, `crashed`, `cooldown`, `circuit_open`
+  - Circuit states: `closed`, `open`, `half_open`, `disabled` (if not configured)
+  - `ack_required` field indicates if manual acknowledgment is needed before resuming
+  - Full integration with circuit-breaker and cooldown features
+  - Command available in help output (`-h` flag)
+
+### Changed
+- Enabled control commands (`start<app>`, `stop<app>`, `restart<app>`, `s<app>`) via UDP
+- Server module now tracks sender address for UDP responses
+- Updated README.md with UDP status command documentation
+
 ## [1.4.4] - 2026-08-08
 
 ### Added

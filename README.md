@@ -945,6 +945,32 @@ Process Watchdog can be controlled using file commands:
   - `stop<app>`: Stop the specified application.
   - `start<app>`: Start the specified application if it is not running.
   - `restart<app>`: Restart the specified application.
+  - `resume<app>`: Resume after cooldown with manual acknowledgment.
+
+## UDP Commands
+
+Get status of processes via UDP broadcast:
+
+- **Status Command:** `s<app>` - e.g., `sBot`
+
+- **Response Format:** JSON with status information
+
+```json
+{
+  "app": "Bot",
+  "status": "running|stopped|crashed|cooldown|circuit_open",
+  "circuit": "closed|open|half_open|disabled",
+  "cooldown": 45,
+  "failures": 2,
+  "ack_required": true
+}
+```
+
+- `status`: Current process state
+- `circuit`: Circuit-breaker state (`disabled` if not configured)
+- `cooldown`: Seconds remaining in cooldown (0 if not in cooldown)
+- `failures`: Number of failures in current window
+- `ack_required`: `true` if manual acknowledgment is required
 
 ## Compilation
 A `Makefile` is included to compile the Process Watchdog application.

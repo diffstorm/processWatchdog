@@ -53,5 +53,31 @@ int udp_poll(int socketfd, int timeout, char *data, int *len);
 */
 void udp_stop(int socketfd);
 
+/**
+    @brief Gets the IP address of the last sender.
+
+    @return The IP address string of the last sender.
+*/
+const char* udp_get_last_sender_ip(void);
+
+/**
+    @brief Gets the port of the last sender.
+
+    @return The port number of the last sender.
+*/
+int udp_get_last_sender_port(void);
+
+/**
+    @brief Sends a UDP packet to the specified address.
+
+    @param socketfd The socket file descriptor of the UDP server.
+    @param data The data to send.
+    @param len The length of the data.
+    @param addr The IP address to send to.
+    @param port The port to send to.
+    @return 0 on success, else on failure.
+*/
+int udp_send(int socketfd, const char *data, int len, const char *addr, int port);
+
 #endif // SERVER_H
 

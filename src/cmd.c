@@ -95,6 +95,15 @@ net_command_t cmd_parse_network(const char *data, int length)
         }
         break;
 
+        case 's': // Status : s<name> ? sBot
+        {
+            LOGD("Status command received: %s", data);
+            cmd.type = NET_CMD_STATUS;
+            strncpy(cmd.app_name, &data[1], MAX_APP_NAME_LENGTH - 1);
+            cmd.app_name[MAX_APP_NAME_LENGTH - 1] = '\0';
+        }
+        break;
+
         default:
         {
             const int max_bytes = MAX_APP_NAME_LENGTH;
