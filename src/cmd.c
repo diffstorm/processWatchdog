@@ -68,7 +68,7 @@ net_command_t cmd_parse_network(const char *data, int length)
         }
         break;
 
-        case 'a': // stArt : a<name> ? aBot (currently disabled)
+        case 'a': // stArt : a<name> e.g. aBot (LIVE: main.c NET_CMD_START calls process_start)
         {
             LOGD("Start command received: %s", data);
             cmd.type = NET_CMD_START;
@@ -77,7 +77,7 @@ net_command_t cmd_parse_network(const char *data, int length)
         }
         break;
 
-        case 'o': // stOp : o<name> ? oBot (currently disabled)
+        case 'o': // stOp : o<name> e.g. oBot (LIVE: main.c NET_CMD_STOP calls process_kill)
         {
             LOGD("Stop command received: %s", data);
             cmd.type = NET_CMD_STOP;
@@ -86,7 +86,7 @@ net_command_t cmd_parse_network(const char *data, int length)
         }
         break;
 
-        case 'r': // Restart : r<name> ? rBot (currently disabled)
+        case 'r': // Restart : r<name> e.g. rBot (LIVE: main.c NET_CMD_RESTART calls process_restart)
         {
             LOGD("Restart command received: %s", data);
             cmd.type = NET_CMD_RESTART;
