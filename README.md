@@ -13,10 +13,43 @@ This application acts as a vigilant guardian for your critical processes, ensuri
 
 This application is particularly useful in environments where multiple processes need to be constantly running, such as server systems, clouds or embedded devices. It operates based on the principle that each monitored process should periodically send heartbeat messages. If a process fails to send a heartbeat within the specified time interval, the watchdog manager assumes the process has halted/hang and automatically restarts it. However there is also support for non-heartbeat sending processes.
 
+## Quick Start
+
+```bash
+# 1. Build (or download a prebuilt binary from the Releases page)
+make BUILD_TYPE=release
+
+# 2. Write a minimal config.ini
+cat > config.ini <<'EOF'
+[processWatchdog]
+udp_port = 12345
+
+[app:MyApp]
+start_delay = 5
+heartbeat_delay = 60
+heartbeat_interval = 20
+cmd = /usr/bin/python myapp.py
+EOF
+
+# 3. Run under the self-restarting supervisor script (recommended)
+./run.sh &
+```
+
+Your process then sends a heartbeat (`p<pid>`) to UDP port `12345` at least every
+`heartbeat_interval` seconds; if it stops, the watchdog restarts it. See
+[Heartbeat Message](#heartbeat-message) for a snippet in your language, and
+[Configuration File](#configuration-file--configini) for every option.
+
+Prebuilt Linux binaries for `x86_64`, `aarch64` and `armv7` are attached to each
+[GitHub release](https://github.com/diffstorm/processWatchdog/releases).
+
 ## Features
 - Starts and monitors specified processes listed in a configuration file.
 - Restarts processes that have crashed or stopped sending their heartbeat.
+- Detects **stagnation** (alive but stuck) via an optional progress signal, not just liveness.
+- Anti-flap controls: exponential-backoff restarts, circuit-breaker, and cooldown.
 - Listens to a specified UDP port for heartbeat messages containing process IDs (PIDs).
+- Reports per-process status on demand over UDP (`s<app>`).
 - Provides a centralized platform for managing multiple processes, enhancing operational efficiency.
 - Provides file command interface to manually start, stop, or restart individual processes or the entire watchdog system or even a Linux reboot.
 - Generates statistics log files to track the status and history of each managed process.
@@ -26,8 +59,9 @@ This application is particularly useful in environments where multiple processes
 - PID reuse detection to prevent false positives when PIDs are recycled.
 
 ## Requirements
+- Linux (uses `/proc` and `sysinfo`; not portable to macOS/Windows).
 - If `heartbeat_interval > 0` : Processes managed by Process Watchdog must periodically send their heartbeat messages to prevent being restarted.
-- Configuration file `config.ini` in the same directory with details about the processes to be managed and the UDP port for communication.
+- An INI configuration file describing the processes to manage and the UDP port, passed with `-i <file.ini>` (defaults to `config.ini` in the working directory).
 
 ## Non-heartbeat sending processes
 Process Watchdog is also supports non-heartbeat sending processes.
@@ -212,56 +246,7 @@ cmd = /usr/bin/python test_child.py 6 crash 10
 - `max_retries` : Optional. Maximum number of retry attempts for restart policy. Set to `0` to disable backoff (current behavior - immediate restart). Default: `0`.
 - `base_delay` : Optional. Base delay in seconds for exponential backoff calculation. Only used when `max_retries > 0`. Default: `1`.
 - `stop_timeout` : Optional. Seconds to wait for graceful shutdown before sending SIGKILL. Default: `10`.
-
-### Circuit-Breaker & Cooldown (Anti-Flap)
-
-These features prevent cascading failures in production bot fleets.
-
-#### Circuit-Breaker
-
-Prevents cascading failures by opening circuit after repeated failures.
-
-```ini
-circuit_breaker_threshold = 5    # Open after 5 failures
-circuit_breaker_window = 300     # In 5 minute window
-```
-
-- `0` = disabled (default)
-- N > 0 = open circuit after N failures in window
-
-**Behavior:**
-- CLOSED: Normal operation, accepts restarts
-- OPEN: Circuit triggered after N failures, blocks restarts
-- HALF_OPEN: After 2x window expires, allows one trial restart
-- On success: Resets to CLOSED; on failure: Re-opens
-
-#### Cooldown
-
-Prevents rapid restart loops with waiting period.
-
-```ini
-cooldown_period = 120              # Wait 2 minutes
-cooldown_manual_ack_threshold = 3  # Require ack after 3 cooldowns
-```
-
-- `cooldown_period = 0` = disabled (default)
-- `cooldown_period > 0` = wait N seconds before auto-resume
-- `cooldown_manual_ack_threshold = 0` = auto-resume always
-- `cooldown_manual_ack_threshold > 0` = require manual ack after N cooldowns
-
-**Manual Ack File Command:** Create `resume<app>` to manually resume.
-
-#### Testing
-
-Use `FlapTest` and `CircuitTest` in `config.ini` to test features:
-
-```bash
-# Circuit-breaker test: 3 failures in 5 min, cooldown with ack
-python test_child.py 7 crash
-
-# Circuit-breaker test: 2 failures in 5 min, auto-resume
-python test_child.py 8 crash
-```
+- `circuit_breaker_threshold`, `circuit_breaker_window`, `cooldown_period`, `cooldown_manual_ack_threshold` : Optional anti-flap controls, see [Circuit-Breaker and Cooldown](#circuit-breaker-and-cooldown).
 
 ### Restart Policy with Exponential Backoff
 
@@ -392,10 +377,24 @@ cooldown_period = 120
 cooldown_manual_ack_threshold = 3
 ```
 
+#### Testing
+
+Use the `FlapTest` and `CircuitTest` apps in `config.ini` to exercise these features:
+
+```bash
+python test_child.py 7 crash   # 3 failures in 5 min, cooldown with ack
+python test_child.py 8 crash   # 2 failures in 5 min, auto-resume
+```
+
 ## Heartbeat Message
 For heartbeat sending processes : A heartbeat message is a UDP packet with the process ID (`PID`) prefixed by `p` (e.g., `p12345` for PID `12345`). It is sent periodically by every managed process to a specified UDP port.
 
-Below are example heartbeat message codes in various languages:
+The examples send to `127.0.0.255` (the loopback-subnet broadcast address); the watchdog binds `0.0.0.0` and receives it locally. `127.0.0.1` works too if you prefer a plain loopback target.
+
+Below are example heartbeat message codes in various languages (click to expand each):
+
+<details>
+  <summary>Click for example in Java</summary>
 
 ### Java
 ```java
@@ -430,7 +429,7 @@ Usage:
 sendPIDOverUDP(12345, false);  // Liveness only
 sendPIDOverUDP(12345, true);   // Liveness + progress
 ```
-
+</details>
 <details>
   <summary>Click for example in C</summary>
 
@@ -949,7 +948,7 @@ Process Watchdog can be controlled using file commands:
 
 ## UDP Commands
 
-Get status of processes via UDP broadcast:
+Query process status over the same UDP port used for heartbeats:
 
 - **Status Command:** `s<app>` - e.g., `sBot`
 
@@ -981,15 +980,15 @@ make
 
 ## Building with CMake
 
-To build the project with CMake, you need to have CMake and GTest installed.
+To build the project with CMake, you need CMake and GTest installed.
 
-    ```bash
-    mkdir build
-    cd build
-    cmake ..
-    make
-    ./test/unit_tests
-    ```
+```bash
+mkdir build
+cd build
+cmake ..
+make
+./test/unit_tests
+```
 
 ## Systemd Service Installation (optional)
 
@@ -1045,13 +1044,11 @@ Use the provided `run.sh` script to start the Process Watchdog application. This
 Or just `./run.sh &` which is recommended.
 
 ## TODO
-- Attaching to already running processes
-- Enable commands over UDP
-- Enable remote syslog server reporting
-- Add periodic server health reporting
-- Add IPC and TCP support
-- Add json support
-- Configurable timeouts (resource sampling interval, stats write interval, process termination timeout)
+- Attaching to already running processes (instead of restarting them on watchdog startup)
+- Remote syslog server reporting
+- Periodic server health reporting
+- IPC and TCP support
+- Configurable resource-sampling and stats-write intervals
 
 ## :snowman: Author
 Eray Öztürk ([@diffstorm](https://github.com/diffstorm))
