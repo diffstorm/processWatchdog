@@ -208,17 +208,6 @@ void f_create(const char *filename);
 void f_remove(const char *filename);
 
 /**
-    @brief Finds and replaces text in a buffer.
-
-    @param find Text to find.
-    @param rep Text to replace with.
-    @param buf Buffer containing the text.
-    @param size Size of the buffer.
-    @return Number of replacements made.
-*/
-unsigned int find_replace_text(char *find, char *rep, char *buf, long size);
-
-/**
     @brief Reads a string from a memory location.
 
     This function is similar to fgets() but reads from a memory location instead of a file.
@@ -285,16 +274,6 @@ int parse_number(const char *ptr, int length, int *cnt);
     @return true if parsing is successful, false otherwise.
 */
 bool parse_int(const char *ptr, int min_val, int max_val, int *result);
-
-/**
-    @brief Copies in string in s starting from p with length into sub
-
-    @param s String buffer.
-    @param sub Substring buffer.
-    @param p Starting position.
-    @param l Length of the substring.
-*/
-void substring(char s[], char sub[], int p, int l);
 
 /**
     @brief Fills the given buffer with a timestamp.

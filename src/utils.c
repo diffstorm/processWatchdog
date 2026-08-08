@@ -297,40 +297,6 @@ void f_remove(const char *filename)
     }
 }
 
-unsigned int find_replace_text(char *find, char *rep, char *buf, long size)
-{
-    long i;
-    unsigned rpc = 0;
-    size_t j, flen, rlen;
-    flen = strlen(find);
-    rlen = strlen(rep);
-
-    for(i = 0; i < size; i++)
-    {
-        /* if char doesn't match first in find, continue */
-        if(buf[i] != *find)
-        {
-            continue;
-        }
-
-        /* if find found, replace with rep */
-        if(strncmp(&buf[i], find, flen) == 0)
-        {
-            for(j = 0; buf[i + j] && j < rlen; j++)
-            {
-                buf[i + j] = rep[j];
-            }
-
-            if(buf[i + j])
-            {
-                rpc++;
-            }
-        }
-    }
-
-    return rpc;
-}
-
 char *sgets(char *s, int n, const char **strp)
 {
     if(**strp == '\0')
@@ -480,19 +446,6 @@ bool parse_int(const char *ptr, int min_val, int max_val, int *result)
 
     *result = (int)tmp;
     return true;
-}
-
-void substring(char s[], char sub[], int p, int l)
-{
-    int c = 0;
-
-    while(c < l)
-    {
-        sub[c] = s[p + c - 1];
-        c++;
-    }
-
-    sub[c] = '\0';
 }
 
 char *timestamp(char *ts, int len)
