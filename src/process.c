@@ -97,9 +97,7 @@ static bool should_restart_with_backoff(int app_index)
     if(app->last_failure_time > 0)
     {
         int delay = calculate_backoff_delay(app->retry_count + 1, app->base_delay);
-        struct timespec ts;
-        clock_gettime(CLOCK_MONOTONIC, &ts);
-        time_t now = ts.tv_sec;
+        time_t now = (time_t)get_monotonic_time(); // checked wrapper (raw clock_gettime left ts uninitialized on failure)
         time_t elapsed = now - app->last_failure_time;
 
         if(elapsed < delay)
@@ -444,7 +442,7 @@ void process_restart(int app_index)
             if(app->circuit_state == 1) // OPEN
             {
                 // Check if HALF_OPEN transition is allowed (wait 2x window)
-                if(now - app->window_start_time >= app->circuit_breaker_window * 2)
+                if(now - app->window_start_time >= (long)app->circuit_breaker_window * 2)
                 {
                     app->circuit_state = 2; // HALF_OPEN
                     app->failure_count = 0;
@@ -504,16 +502,15 @@ void process_restart(int app_index)
     {
         // Increment retry count on failure
         app->retry_count++;
-        struct timespec ts;
-        clock_gettime(CLOCK_MONOTONIC, &ts);
-        app->last_failure_time = ts.tv_sec;
+        time_t now = (time_t)get_monotonic_time(); // checked wrapper (raw clock_gettime left ts uninitialized on failure)
+        app->last_failure_time = now;
         LOGE("Failed to start process %s (retry %d/%d)", app->name, app->retry_count, app->max_retries);
-        
+
         // Circuit-breaker: record failure time and check cooldown
         if(app->circuit_breaker_threshold > 0)
         {
-            app->last_failure_time = ts.tv_sec;
-            
+            app->last_failure_time = now;
+
             // Check if circuit is OPEN (meaning we reached threshold)
             if(app->circuit_state == 1) // OPEN
             {
@@ -521,15 +518,15 @@ void process_restart(int app_index)
                 if(!app->in_cooldown)
                 {
                     app->in_cooldown = true;
-                    app->cooldown_start_time = ts.tv_sec;
+                    app->cooldown_start_time = now;
                     app->cooldown_count++;
-                    app->cooldown_end_time = ts.tv_sec + app->cooldown_period;
+                    app->cooldown_end_time = now + app->cooldown_period;
                     LOGN("Cooldown started for %s (count: %d, period: %ds)",
                          app->name, app->cooldown_count, app->cooldown_period);
                 }
-                
+
                 // Check if cooldown period expired
-                if(app->cooldown_period > 0 && ts.tv_sec >= app->cooldown_end_time)
+                if(app->cooldown_period > 0 && now >= app->cooldown_end_time)
                 {
                     app->in_cooldown = false;
                     app->cooldown_start_time = 0;

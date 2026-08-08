@@ -145,6 +145,12 @@ static float get_process_cpu_usage(int index, int pid)
 
     unsigned long long process_time = utime + stime + cutime + cstime;
     long ticks_per_sec = sysconf(_SC_CLK_TCK);
+
+    if(ticks_per_sec <= 0)
+    {
+        // Guard the divisor below: sysconf can return -1, and 0 would be a SIGFPE.
+        return -1.0f;
+    }
     //long nprocs        = sysconf(_SC_NPROCESSORS_ONLN);
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);

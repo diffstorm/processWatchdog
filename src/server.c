@@ -56,6 +56,7 @@ int udp_start(int *socketfd, int port)
     if(setsockopt(*socketfd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0)
     {
         LOGE("setsockopt error");
+        close(*socketfd);
         return 1;
     }
 
@@ -68,6 +69,7 @@ int udp_start(int *socketfd, int port)
     if(bind(*socketfd, (struct sockaddr *)&si_me, sizeof(si_me)) == -1)
     {
         LOGE("bind error");
+        close(*socketfd);
         return 1;
     }
 

@@ -80,6 +80,19 @@ static int config_ini_handler(void *user, const char *section, const char *name,
                     }
                 }
 
+                // Reject a duplicate [app:X] rather than silently overwriting the first.
+                // (Catches duplicates separated by other sections; two byte-identical headers
+                // back-to-back collapse in inih before we see them, but that is not a realistic
+                // hand-written config.)
+                for(int j = 0; j < state->app_count; j++)
+                {
+                    if(strcmp(apps[j].name, app_name) == 0)
+                    {
+                        LOGE("Duplicate app section [%s]", section);
+                        return 0; // Error
+                    }
+                }
+
                 strncpy(apps[state->app_count].name, app_name, MAX_APP_NAME_LENGTH - 1);
                 apps[state->app_count].name[MAX_APP_NAME_LENGTH - 1] = '\0';
                 state->app_count++;
@@ -313,13 +326,14 @@ static int config_ini_handler(void *user, const char *section, const char *name,
         }
         else if(strcmp(name, "cmd") == 0)
         {
-            snprintf(apps[index].cmd, MAX_APP_CMD_LENGTH, "%s", value);
-
+            // Reject before copying, so a too-long cmd is never stored truncated.
             if(strlen(value) >= MAX_APP_CMD_LENGTH)
             {
                 LOGE("Invalid cmd for app %s - longer than %d characters", apps[index].name, MAX_APP_CMD_LENGTH);
                 return 0;
             }
+
+            snprintf(apps[index].cmd, MAX_APP_CMD_LENGTH, "%s", value);
         }
     }
 
@@ -361,7 +375,11 @@ int config_parse_file(const char *ini_path, Application_t *apps, int max_apps, A
     // Prepare user data for the handler
     void *user_data[2] = { apps, state };
 
-    if(ini_parse(ini_path, config_ini_handler, user_data) < 0)
+    // ini_parse returns 0 on success, the line number of the first error on a handler
+    // rejection (a positive value), or negative on file-open/alloc error. Treat ANY
+    // non-zero result as failure — otherwise a handler that rejected a bad value (invalid
+    // app name, duplicate section, out-of-range int) would be silently accepted.
+    if(ini_parse(ini_path, config_ini_handler, user_data) != 0)
     {
         LOGE("Failed to parse INI file %s", ini_path);
         return 1;
@@ -406,6 +424,16 @@ int config_parse_file(const char *ini_path, Application_t *apps, int max_apps, A
         apps[i].in_cooldown = false;
         apps[i].cooldown_start_time = 0;
         apps[i].cooldown_end_time = 0;
+    }
+
+    // cmd is mandatory: an app with no cmd= would try to run an empty command. Reject loudly.
+    for(int i = 0; i < state->app_count; i++)
+    {
+        if(apps[i].cmd[0] == '\0')
+        {
+            LOGE("App %s has no 'cmd' — refusing to start", apps[i].name);
+            return 1;
+        }
     }
 
     LOGD("%d processes have found in the ini file %s", state->app_count, ini_path);

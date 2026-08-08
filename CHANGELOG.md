@@ -50,6 +50,21 @@ All notable changes to this project will be documented in this file.
 - **Uninitialised reads** on failed `stat`, `sysinfo`, and `clock_gettime` return paths.
 - **Potential crash from `localtime`** returning `NULL` (bad `time_t`); replaced with
   `localtime_r` + NULL guards in the timestamp, stats and daily-reboot paths.
+- **Config handler rejections were silently accepted**: `config_parse_file` only treated a
+  negative `ini_parse` result as failure, but a handler rejecting a bad value returns the
+  (positive) line number — so invalid app names, out-of-range integers and duplicate
+  sections booted anyway. Any non-zero result is now a failure.
+- **Integer overflow in `parse_number`**: a long digit run in a UDP datagram overflowed the
+  `int` accumulator (signed-overflow UB); it now clamps at `INT32_MAX` (rejected as an
+  invalid pid downstream).
+- **Two unchecked `clock_gettime` calls** in the restart/backoff path (uninitialised
+  `ts.tv_sec` on failure) now use the checked `get_monotonic_time()` wrapper.
+- **`sysconf(_SC_CLK_TCK)` used as a divisor** without checking for `<= 0` (garbage CPU% or
+  `SIGFPE`); now guarded.
+- **Socket fd leak** in `udp_start` on `setsockopt`/`bind` failure (missing `close`).
+- **`circuit_breaker_window * 2`** could overflow `int`; widened to `long`.
+- **Config validation**: reject an app section with no `cmd`, a duplicate `[app:X]`, and a
+  too-long `cmd` (now checked before it is stored truncated).
 
 ### Removed
 - Unused, buggy helpers `substring` and `find_replace_text`.

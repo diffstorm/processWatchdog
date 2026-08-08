@@ -70,6 +70,9 @@ TEST(UtilsTest, ParseNumber)
 
     EXPECT_EQ(parse_number("xyz", 3, &cnt), 0);  // no digit
     EXPECT_EQ(parse_number("999", 1, &cnt), 9);  // length-bounded, no over-read
+
+    // A long digit run must clamp at INT32_MAX, not overflow (signed overflow is UB).
+    EXPECT_EQ(parse_number("99999999999999999", 17, &cnt), INT32_MAX);
 }
 
 TEST(UtilsTest, ParseInt)

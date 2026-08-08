@@ -417,10 +417,21 @@ int parse_number(const char *ptr, int length, int *cnt)
         i++;
     }
 
-    /* Parse digits (length checked before the deref) */
+    /* Parse digits (length checked before the deref). Clamp at INT32_MAX rather than let
+       sum = 10*sum + d overflow (signed overflow is UB) on a long digit run from untrusted UDP. */
     while(i < length && isdigit((unsigned char)*ptr))
     {
-        sum = 10 * sum + ((*ptr) - '0');
+        int digit = *ptr - '0';
+
+        if(sum > (INT32_MAX - digit) / 10)
+        {
+            sum = INT32_MAX;
+        }
+        else
+        {
+            sum = 10 * sum + digit;
+        }
+
         ptr++;
         i++;
     }

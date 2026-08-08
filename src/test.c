@@ -60,6 +60,33 @@ static int write_sample_ini(const char *path)
     return 0;
 }
 
+// Asserts that a config (the given app-section body, with a [processWatchdog] header
+// prepended) is REJECTED by the parser. Prints and returns 0 on failure to reject, else 1.
+static int config_is_rejected(const char *label, const char *app_body)
+{
+    const char *path = "test_pw_reject.ini";
+    FILE *f = fopen(path, "w");
+    if(!f)
+    {
+        printf("config_parse: could not create temp ini for '%s'\n", label);
+        return 0;
+    }
+    fprintf(f, "[processWatchdog]\nudp_port = 12345\n\n%s", app_body);
+    fclose(f);
+
+    Application_t apps[MAX_APPS];
+    AppState_t state = {0};
+    int rc = config_parse_file(path, apps, MAX_APPS, &state);
+    remove(path);
+
+    if(rc == 0)
+    {
+        printf("config_parse: invalid config '%s' was NOT rejected\n", label);
+        return 0;
+    }
+    return 1;
+}
+
 /*
     Config parse (end-to-end): the real parser must load every app, preserve a configured
     progress_timeout (regression B1: it was reset to 0 after parse), and default it to 0 for
@@ -108,25 +135,17 @@ static int test_config_parse(void)
         }
     }
 
-    // An app name with a character outside [A-Za-z0-9_-] must be rejected at load time
-    // (it would otherwise break the status JSON / file-command filenames).
-    const char *bad = "test_pw_badname.ini";
-    FILE *bf = fopen(bad, "w");
-    if(bf)
-    {
-        fprintf(bf, "[processWatchdog]\nudp_port = 12345\n\n"
-                    "[app:bad\"name]\nheartbeat_interval = 15\ncmd = /bin/true\n");
-        fclose(bf);
-
-        Application_t apps2[MAX_APPS];
-        AppState_t state2 = {0};
-        if(config_parse_file(bad, apps2, MAX_APPS, &state2) == 0)
-        {
-            printf("config_parse: an invalid app name was NOT rejected\n");
-            pass = 0;
-        }
-        remove(bad);
-    }
+    // Invalid configs must be rejected at load time, not booted with bad state:
+    //  - app name outside [A-Za-z0-9_-] (would break status JSON / file-command names)
+    //  - an app section with no cmd (would try to run an empty command)
+    //  - a duplicate [app:X] section (would silently overwrite the first)
+    pass &= config_is_rejected("bad name",
+                               "[app:bad\"name]\nheartbeat_interval = 15\ncmd = /bin/true\n");
+    pass &= config_is_rejected("missing cmd",
+                               "[app:NoCmd]\nheartbeat_interval = 15\n");
+    pass &= config_is_rejected("duplicate section",
+                               "[app:Dup]\ncmd = /bin/true\n\n[app:Other]\ncmd = /bin/true\n\n"
+                               "[app:Dup]\ncmd = /bin/false\n");
 
     return pass ? 0 : 1;
 }

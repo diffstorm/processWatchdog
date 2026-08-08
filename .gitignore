@@ -81,8 +81,7 @@ crash_log
 wdt.log
 stats_*.log
 stats_*.raw
-test_pw_*.ini
-test_progress_timeout.ini
+test_*.ini
 
 # Generated transfer artifacts
 *.patch
