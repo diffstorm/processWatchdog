@@ -219,23 +219,29 @@ These features prevent cascading failures in production bot fleets.
 
 #### Circuit-Breaker
 
-Open circuit after repeated failures within a time window.
+Prevents cascading failures by opening circuit after repeated failures.
 
 ```ini
-circuit_breaker_threshold = 5
-circuit_breaker_window = 300
+circuit_breaker_threshold = 5    # Open after 5 failures
+circuit_breaker_window = 300     # In 5 minute window
 ```
 
 - `0` = disabled (default)
 - N > 0 = open circuit after N failures in window
 
+**Behavior:**
+- CLOSED: Normal operation, accepts restarts
+- OPEN: Circuit triggered after N failures, blocks restarts
+- HALF_OPEN: After 2x window expires, allows one trial restart
+- On success: Resets to CLOSED; on failure: Re-opens
+
 #### Cooldown
 
-Wait period after circuit opens, with optional manual acknowledgment.
+Prevents rapid restart loops with waiting period.
 
 ```ini
-cooldown_period = 120
-cooldown_manual_ack_threshold = 3
+cooldown_period = 120              # Wait 2 minutes
+cooldown_manual_ack_threshold = 3  # Require ack after 3 cooldowns
 ```
 
 - `cooldown_period = 0` = disabled (default)
@@ -243,7 +249,19 @@ cooldown_manual_ack_threshold = 3
 - `cooldown_manual_ack_threshold = 0` = auto-resume always
 - `cooldown_manual_ack_threshold > 0` = require manual ack after N cooldowns
 
-**Manual Ack File Command:** Create `resume<app>` to manually resume after cooldown.
+**Manual Ack File Command:** Create `resume<app>` to manually resume.
+
+#### Testing
+
+Use `FlapTest` and `CircuitTest` in `config.ini` to test features:
+
+```bash
+# Circuit-breaker test: 3 failures in 5 min, cooldown with ack
+python test_child.py 7 crash
+
+# Circuit-breaker test: 2 failures in 5 min, auto-resume
+python test_child.py 8 crash
+```
 
 ### Restart Policy with Exponential Backoff
 
