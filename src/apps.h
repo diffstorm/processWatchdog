@@ -65,6 +65,19 @@ typedef struct
     int retry_count; /**< Current retry count for restart policy. */
     time_t last_failure_time; /**< Time when the last failure occurred. */
     time_t last_progress_time; /**< Monotonic time of last progress signal. */
+    // Circuit-breaker
+    int circuit_breaker_threshold; /**< 0 = disabled, N = restart after N failures in window */
+    int circuit_breaker_window; /**< Window in seconds for failure counting (0 = default 300) */
+    int circuit_state; /**< 0 = CLOSED, 1 = OPEN, 2 = HALF_OPEN */
+    int failure_count; /**< Number of failures in current window */
+    time_t window_start_time; /**< Start time of current failure window */
+    // Cooldown
+    int cooldown_period; /**< 0 = disabled, seconds to wait before auto-resume */
+    int cooldown_count; /**< Number of cooldowns triggered */
+    int cooldown_manual_ack_threshold; /**< 0 = auto-resume, N = require ack after N cooldowns */
+    bool in_cooldown; /**< Flag indicating if in cooldown period */
+    time_t cooldown_start_time; /**< Start time of current cooldown */
+    time_t cooldown_end_time; /**< End time of current cooldown */
 } Application_t;
 
 typedef enum

@@ -438,9 +438,20 @@ int main(int argc, char *argv[])
 
                 if(!process_is_running(i))
                 {
+                    Application_t *apps = apps_get_array();
+                    Application_t *app = &apps[i];
+                    
                     LOGE("Process %s has crashed, restarting", get_app_name(i));
                     stats_crashed_at(i);
                     process_restart(i);
+                    
+                    // Log cooldown status if in cooldown
+                    if(app->in_cooldown)
+                    {
+                        time_t remaining = app->cooldown_end_time - time(NULL);
+                        LOGN("Cooldown active for %s: %ds remaining",
+                             app->name, (int)remaining);
+                    }
                 }
                 else if(heartbeat_is_timeout(i))
                 {
@@ -458,6 +469,20 @@ int main(int argc, char *argv[])
                     LOGN("Process %s has restarted by file command", get_app_name(i));
                     process_restart(i);
                     filecmd_remove_restart(i);
+                }
+                else if(filecmd_resume(i))
+                {
+                    Application_t *apps = apps_get_array();
+                    Application_t *app = &apps[i];
+                    
+                    LOGN("Manual ack received for %s, resuming operations", get_app_name(i));
+                    process_restart(i);
+                    filecmd_remove_resume(i);
+                    
+                    // Reset cooldown state
+                    app->in_cooldown = false;
+                    app->cooldown_count = 0;
+                    app->circuit_state = 0; // CLOSED
                 }
             }
             else

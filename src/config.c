@@ -259,6 +259,38 @@ static int config_ini_handler(void *user, const char *section, const char *name,
                 return 0;
             }
         }
+        else if(strcmp(name, "circuit_breaker_threshold") == 0)
+        {
+            if(!parse_int(value, 0, INT_MAX, &apps[index].circuit_breaker_threshold))
+            {
+                LOGE("Invalid circuit_breaker_threshold for app %s: %s", apps[index].name, value);
+                return 0;
+            }
+        }
+        else if(strcmp(name, "circuit_breaker_window") == 0)
+        {
+            if(!parse_int(value, 1, INT_MAX, &apps[index].circuit_breaker_window))
+            {
+                LOGE("Invalid circuit_breaker_window for app %s: %s", apps[index].name, value);
+                return 0;
+            }
+        }
+        else if(strcmp(name, "cooldown_period") == 0)
+        {
+            if(!parse_int(value, 0, INT_MAX, &apps[index].cooldown_period))
+            {
+                LOGE("Invalid cooldown_period for app %s: %s", apps[index].name, value);
+                return 0;
+            }
+        }
+        else if(strcmp(name, "cooldown_manual_ack_threshold") == 0)
+        {
+            if(!parse_int(value, 0, INT_MAX, &apps[index].cooldown_manual_ack_threshold))
+            {
+                LOGE("Invalid cooldown_manual_ack_threshold for app %s: %s", apps[index].name, value);
+                return 0;
+            }
+        }
         else if(strcmp(name, "cmd") == 0)
         {
             snprintf(apps[index].cmd, MAX_APP_CMD_LENGTH, "%s", value);
@@ -315,7 +347,7 @@ int config_parse_file(const char *ini_path, Application_t *apps, int max_apps, A
         return 1;
     }
 
-    // Set default values for max_retries, base_delay, and stop_timeout if not specified
+    // Set default values for all app parameters
     for(int i = 0; i < state->app_count; i++)
     {
         if(apps[i].max_retries <= 0)
@@ -338,6 +370,21 @@ int config_parse_file(const char *ini_path, Application_t *apps, int max_apps, A
         // Initialize retry_count and last_failure_time
         apps[i].retry_count = 0;
         apps[i].last_failure_time = 0;
+        
+        // Initialize circuit-breaker
+        apps[i].circuit_state = 0; // CLOSED
+        apps[i].failure_count = 0;
+        apps[i].window_start_time = 0;
+        if(apps[i].circuit_breaker_threshold > 0 && apps[i].circuit_breaker_window == 0)
+        {
+            apps[i].circuit_breaker_window = 300; // Default 5 minutes
+        }
+        
+        // Initialize cooldown
+        apps[i].cooldown_count = 0;
+        apps[i].in_cooldown = false;
+        apps[i].cooldown_start_time = 0;
+        apps[i].cooldown_end_time = 0;
     }
 
     LOGD("%d processes have found in the ini file %s", state->app_count, ini_path);

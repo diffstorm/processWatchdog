@@ -71,6 +71,14 @@ bool filecmd_stop(int i);
 bool filecmd_restart(int i);
 
 /**
+    @brief Checks if the file command to resume an application exists (manual ack for cooldown).
+
+    @param i Index of the application.
+    @return true if the file command exists, false otherwise.
+*/
+bool filecmd_resume(int i);
+
+/**
     @brief Removes the file command to start an application if it exists.
 
     @param i Index of the application.
@@ -92,6 +100,13 @@ void filecmd_remove_stop(int i);
 void filecmd_remove_restart(int i);
 
 /**
+    @brief Removes the file command to resume an application if it exists (manual ack for cooldown).
+
+    @param i Index of the application.
+*/
+void filecmd_remove_resume(int i);
+
+/**
     @brief Creates the file command to start an application if it does not exist.
 
     @param i Index of the application.
@@ -111,6 +126,13 @@ void filecmd_create_stop(int i);
     @param i Index of the application.
 */
 void filecmd_create_restart(int i);
+
+/**
+    @brief Creates the file command to resume an application if it does not exist (manual ack for cooldown).
+
+    @param i Index of the application.
+*/
+void filecmd_create_resume(int i);
 
 /**
     @brief Checks if a file exists and removes it.

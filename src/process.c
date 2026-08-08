@@ -401,7 +401,60 @@ void process_restart(int app_index)
     Application_t *apps = apps_get_array();
     Application_t *app = &apps[app_index];
     LOGD("Restarting process %s", app->name);
-
+    
+    // Circuit-breaker check
+    if(app->circuit_breaker_threshold > 0)
+    {
+        long now = get_monotonic_time();
+        
+        // Initialize window if first failure
+        if(app->window_start_time == 0)
+        {
+            app->window_start_time = now;
+            app->failure_count = 1;
+        }
+        else
+        {
+            // Check if window expired, reset if so
+            if(now - app->window_start_time >= app->circuit_breaker_window)
+            {
+                app->failure_count = 0;
+                app->window_start_time = now;
+                app->circuit_state = 0; // CLOSED
+            }
+            
+            // Check if circuit is OPEN
+            if(app->circuit_state == 1) // OPEN
+            {
+                // Check if HALF_OPEN transition is allowed (wait 2x window)
+                if(now - app->window_start_time >= app->circuit_breaker_window * 2)
+                {
+                    app->circuit_state = 2; // HALF_OPEN
+                    app->failure_count = 0;
+                    LOGN("Circuit HALF_OPEN for %s, allowing one trial restart", app->name);
+                }
+                else
+                {
+                    LOGD("Circuit OPEN for %s (failures: %d, window: %ds), blocking restart",
+                         app->name, app->failure_count, (int)(now - app->window_start_time));
+                    return; // Don't restart
+                }
+            }
+            
+            // Increment failure count
+            app->failure_count++;
+            
+            // Check threshold
+            if(app->failure_count >= app->circuit_breaker_threshold)
+            {
+                app->circuit_state = 1; // OPEN
+                LOGE("Circuit OPEN for %s after %d failures in %ds window",
+                     app->name, app->failure_count, app->circuit_breaker_window);
+                return; // Don't restart
+            }
+        }
+    }
+    
     // Check if restart should proceed based on backoff policy
     if(!should_restart_with_backoff(app_index))
     {
@@ -438,6 +491,52 @@ void process_restart(int app_index)
         clock_gettime(CLOCK_MONOTONIC, &ts);
         app->last_failure_time = ts.tv_sec;
         LOGE("Failed to start process %s (retry %d/%d)", app->name, app->retry_count, app->max_retries);
+        
+        // Circuit-breaker: record failure time and check cooldown
+        if(app->circuit_breaker_threshold > 0)
+        {
+            app->last_failure_time = ts.tv_sec;
+            
+            // Check if circuit is OPEN (meaning we reached threshold)
+            if(app->circuit_state == 1) // OPEN
+            {
+                // Start cooldown period
+                if(!app->in_cooldown)
+                {
+                    app->in_cooldown = true;
+                    app->cooldown_start_time = ts.tv_sec;
+                    app->cooldown_count++;
+                    app->cooldown_end_time = ts.tv_sec + app->cooldown_period;
+                    LOGN("Cooldown started for %s (count: %d, period: %ds)",
+                         app->name, app->cooldown_count, app->cooldown_period);
+                }
+                
+                // Check if cooldown period expired
+                if(app->cooldown_period > 0 && ts.tv_sec >= app->cooldown_end_time)
+                {
+                    app->in_cooldown = false;
+                    app->cooldown_start_time = 0;
+                    app->cooldown_end_time = 0;
+                    
+                    // Check if manual ack required
+                    if(app->cooldown_manual_ack_threshold > 0 &&
+                       app->cooldown_count >= app->cooldown_manual_ack_threshold)
+                    {
+                        LOGN("Cooldown %d for %s requires manual ack. Create 'resum%s' file to resume.",
+                             app->cooldown_count, app->name, app->name);
+                    }
+                    else
+                    {
+                        // Auto-resume: reset circuit state and continue
+                        app->circuit_state = 0; // CLOSED
+                        app->failure_count = 0;
+                        app->window_start_time = 0;
+                        LOGN("Cooldown expired for %s, auto-resuming",
+                             app->name);
+                    }
+                }
+            }
+        }
     }
     else
     {
@@ -447,5 +546,15 @@ void process_restart(int app_index)
         // Use heartbeat module to update heartbeat time
         heartbeat_update_time(app_index);
         LOGI("Process %s restarted successfully", app->name);
+        
+        // Reset circuit-breaker on success
+        if(app->circuit_breaker_threshold > 0)
+        {
+            app->failure_count = 0;
+            app->circuit_state = 0; // CLOSED
+            app->window_start_time = 0;
+            app->cooldown_count = 0;
+            app->in_cooldown = false;
+        }
     }
 }

@@ -28,6 +28,7 @@ typedef enum
     fc_START = 0,
     fc_STOP,
     fc_RESTART,
+    fc_RESUME,
     fc_END
 } action_t;
 
@@ -36,6 +37,7 @@ static const char *prefixes[] =
     "start",
     "stop",
     "restart",
+    "resume",
     0
 };
 
@@ -84,6 +86,11 @@ bool filecmd_restart(int i)
     return is_file_exist(fc_RESTART, i);
 }
 
+bool filecmd_resume(int i)
+{
+    return is_file_exist(fc_RESUME, i);
+}
+
 void filecmd_remove_start(int i)
 {
     if(filecmd_start(i))
@@ -108,6 +115,14 @@ void filecmd_remove_restart(int i)
     }
 }
 
+void filecmd_remove_resume(int i)
+{
+    if(filecmd_resume(i))
+    {
+        remove_file(fc_RESUME, i);
+    }
+}
+
 void filecmd_create_start(int i)
 {
     if(!filecmd_start(i))
@@ -129,6 +144,14 @@ void filecmd_create_restart(int i)
     if(!filecmd_restart(i))
     {
         create_file(fc_RESTART, i);
+    }
+}
+
+void filecmd_create_resume(int i)
+{
+    if(!filecmd_resume(i))
+    {
+        create_file(fc_RESUME, i);
     }
 }
 
