@@ -33,7 +33,16 @@
 static time_t config_get_file_modified_time(const char *path)
 {
     struct stat attr;
-    stat(path, &attr);
+
+    if(stat(path, &attr) != 0)
+    {
+        // On failure attr is uninitialized; returning attr.st_mtime would be UB. Return a
+        // sentinel: config_is_file_updated compares != last_modified, so a transient failure
+        // reads as "changed" (conservative — never a stale accept).
+        LOGW("stat failed for %s: %s", path, strerror(errno));
+        return (time_t)-1;
+    }
+
     return attr.st_mtime;
 }
 
