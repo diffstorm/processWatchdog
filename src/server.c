@@ -92,11 +92,12 @@ static int udp_pollp(int socketfd, struct pollfd *pfd, int timeout, char *data, 
     // call poll() to wait for events on the socket
     if(poll(pfd, 1, timeout) == -1)
     {
-        if(errno != EINTR) // Interrupted system call
+        if(errno == EINTR) // interrupted by a signal: no data this round, not a failure
         {
-            LOGE("poll error, error : %d - %s", errno, strerror(errno));
+            return 0;
         }
 
+        LOGE("poll error, error : %d - %s", errno, strerror(errno));
         return 1;
     }
 

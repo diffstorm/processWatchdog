@@ -26,6 +26,29 @@ All notable changes to this project will be documented in this file.
   detection never ran for any app despite being documented and shipped default-on. Removed
   the stray reset (the initial `memset` still defaults omitting apps to 0). Added the
   `progress_timeout_config` regression test.
+- **Silent permanent outage on UDP-poll failure**: the main loop exited with the default
+  `EXIT_NORMALLY`, which the supervisor script treats as a clean stop (no respawn). Now
+  exits with `EXIT_RESTART` so the watchdog is restarted. A signal-interrupted poll
+  (`EINTR`) is treated as "no data", not a failure.
+- **Remote out-of-bounds read in the UDP command parser**: `parse_number` had an unbounded
+  scan (ignored length / NUL), signed-`char` `isdigit` UB, and a `char` counter that could
+  index before the buffer. Now bounded and `unsigned char`-safe; malformed-datagram tests added.
+- **Undefined behaviour in restart backoff**: `base_delay * (1 << (retry_count - 1))` could
+  shift past the int width and overflow negative past the 1-hour cap (restart storm) for a
+  large `max_retries`. Inputs are now clamped.
+- **Divide-by-zero in first-heartbeat stats** guarded (potential `SIGFPE`).
+- **Async-signal-unsafe signal handlers**: handlers called `LOGN`/`exit()` (mutex + stdio),
+  which could self-deadlock at shutdown. Reduced to flag-setting via `sigaction`; the cause
+  is logged from the main loop and the forced-exit path uses `_exit`.
+- **Uninitialised reads** on failed `stat`, `sysinfo`, and `clock_gettime` return paths.
+- **Potential crash from `localtime`** returning `NULL` (bad `time_t`); replaced with
+  `localtime_r` + NULL guards in the timestamp, stats and daily-reboot paths.
+
+### Removed
+- Unused, buggy helpers `substring` and `find_replace_text`.
+
+### Build
+- CI now cross-builds and publishes Linux binaries for `x86_64`, `aarch64` and `armv7`.
 
 ## [1.4.4] - 2026-08-08
 

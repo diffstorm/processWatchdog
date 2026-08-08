@@ -402,7 +402,8 @@ int main(int argc, char *argv[])
 {
     int opt;
     opterr = 0;
-    // sigaction, no SA_RESTART: a signal interrupts the UDP poll (udp_poll handles EINTR).
+    // sigaction (no SA_RESTART): a signal interrupts the UDP poll; udp_poll treats EINTR as
+    // "no data", so the shutdown flags set by a handler are seen on the next loop iteration.
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sigemptyset(&sa.sa_mask);
