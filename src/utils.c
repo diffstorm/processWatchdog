@@ -461,7 +461,19 @@ char *timestamp(char *ts, int len)
 {
     time_t date;
     time(&date);
-    strftime(ts, len, "%Y-%m-%d %H:%M:%S", localtime(&date));
+    struct tm tm_buf;
+
+    // localtime_r (reentrant, as strtok_r is already used in this project) into a local tm;
+    // guard against NULL so a bad time_t never reaches strftime.
+    if(localtime_r(&date, &tm_buf) != NULL)
+    {
+        strftime(ts, len, "%Y-%m-%d %H:%M:%S", &tm_buf);
+    }
+    else if(len > 0)
+    {
+        ts[0] = '\0';
+    }
+
     return ts;
 }
 

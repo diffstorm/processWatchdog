@@ -662,9 +662,13 @@ int main(int argc, char *argv[])
                 case REBOOT_MODE_DAILY_TIME:
                 {
                     time_t now = time(NULL);
-                    struct tm *tm_now = localtime(&now);
+                    struct tm tm_now;
 
-                    if(tm_now->tm_hour == apps_get_state()->reboot_params.daily_time.hour && tm_now->tm_min == apps_get_state()->reboot_params.daily_time.min)
+                    // localtime_r + NULL guard: localtime returning NULL here would be a
+                    // direct tm_now->tm_hour NULL deref crash.
+                    if(localtime_r(&now, &tm_now) != NULL
+                       && tm_now.tm_hour == apps_get_state()->reboot_params.daily_time.hour
+                       && tm_now.tm_min == apps_get_state()->reboot_params.daily_time.min)
                     {
                         LOGN("Periodic reboot triggered (daily time)");
                         main_alive = 0;

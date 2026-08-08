@@ -415,9 +415,13 @@ void stats_update_memory_usage(int index, int pid)
 
 static char *printDate(const time_t *t, char *buf, size_t buf_size)
 {
-    if((*t) > 0)
+    struct tm tm_buf;
+
+    // localtime_r + NULL guard: a corrupt time_t (e.g. from a bad .raw stats file) makes
+    // localtime return NULL, which strftime would then dereference and crash.
+    if((*t) > 0 && localtime_r(t, &tm_buf) != NULL)
     {
-        strftime(buf, buf_size, "%Y-%m-%d %H:%M:%S", localtime(t));
+        strftime(buf, buf_size, "%Y-%m-%d %H:%M:%S", &tm_buf);
     }
     else
     {
