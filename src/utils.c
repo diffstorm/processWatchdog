@@ -420,28 +420,31 @@ void *findin(void *haystack, size_t haystacksize, void *needle, size_t needlesiz
     return 0;
 }
 
-int parse_number(const char *ptr, int length, char *cnt)
+int parse_number(const char *ptr, int length, int *cnt)
 {
-    char minus = 0, i = 0;
+    char minus = 0;
+    int i = 0;
     int sum = 0;
 
-    /* Skip non-digit characters */
-    while(!isdigit(*ptr) && *ptr != '-')
+    /* Skip leading non-digit characters. Bounded by length and stopped at NUL so a datagram
+       with no digit cannot walk past the buffer (remote OOB read); cast to unsigned char
+       because isdigit() on a negative (high-bit) char is undefined. */
+    while(i < length && *ptr != '\0' && !isdigit((unsigned char)*ptr) && *ptr != '-')
     {
         ptr++;
         i++;
     }
 
     /* Check for minus character */
-    if(*ptr == '-')
+    if(i < length && *ptr == '-')
     {
         minus = 1;
         ptr++;
         i++;
     }
 
-    /* Parse number */
-    while(isdigit(*ptr) && i < length)
+    /* Parse number (length checked before the deref; unsigned-char cast for isdigit) */
+    while(i < length && isdigit((unsigned char)*ptr))
     {
         sum = 10 * sum + ((*ptr) - '0');
         ptr++;

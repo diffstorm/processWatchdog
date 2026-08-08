@@ -262,14 +262,14 @@ unsigned short crc16(const unsigned char *data_p, unsigned char length);
 void *findin(void *haystack, size_t haystacksize, void *needle, size_t needlesize);
 
 /**
-    @brief Parses and returns a number from a string.
+    @brief Parses a leading integer from a bounded string.
 
-    @param ptr Pointer to the string.
-    @param length Length of the string.
-    @param cnt Pointer to store the parsed number.
-    @return 0 on success, -1 on failure.
+    @param ptr Pointer to the string (need not be NUL-terminated).
+    @param length Maximum number of bytes to inspect.
+    @param cnt Optional out-param: number of characters consumed (0..length). May be NULL.
+    @return The parsed integer (0 if no digits were found).
 */
-int parse_number(const char *ptr, int length, char *cnt);
+int parse_number(const char *ptr, int length, int *cnt);
 
 /**
     @brief Parses an integer from a string within a specified range.

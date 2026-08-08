@@ -46,7 +46,7 @@ net_command_t cmd_parse_network(const char *data, int length)
     {
         case 'p':
         {
-            char cnt;
+            int cnt;
             int n = parse_number(data, length, &cnt);
             LOGD("Heartbeat command received from pid %d : %s", n, data);
 

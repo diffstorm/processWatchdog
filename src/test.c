@@ -69,6 +69,28 @@ int test_heartbeat_parsing()
         pass = 0;
     }
 
+    // Malformed inputs must be rejected cleanly (not parsed, no OOB read). A 'p' with no
+    // digit is the case that drove the pre-fix unbounded skip loop past the buffer, so pass
+    // a length that is deliberately shorter than the buffer to model a real datagram.
+    char raw[8] = { 'p', 'x', 'y', 'z', 'q', 'r', 's', 't' }; // intentionally NOT NUL-terminated
+    cmd = cmd_parse_network(raw, (int)sizeof(raw));
+
+    if(cmd.type != NET_CMD_UNKNOWN)
+    {
+        printf("Malformed 'p' with no digit was not rejected\n");
+        pass = 0;
+    }
+
+    // High-bit bytes after 'p' (isdigit on a negative char was UB pre-fix)
+    char high[4] = { 'p', (char)0x80, (char)0xFF, 'z' };
+    cmd = cmd_parse_network(high, (int)sizeof(high));
+
+    if(cmd.type != NET_CMD_UNKNOWN)
+    {
+        printf("Malformed 'p' with high-bit bytes was not rejected\n");
+        pass = 0;
+    }
+
     return pass;
 }
 
