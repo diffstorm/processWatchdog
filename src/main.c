@@ -482,7 +482,8 @@ int main(int argc, char *argv[])
         {
             if(main_alive)
             {
-                LOGE("UDP poll failed");
+                LOGE("UDP poll failed, exiting for supervisor restart");
+                return_code = EXIT_RESTART; // exit 2 -> run.sh re-runs us; default EXIT_NORMALLY would be a silent permanent stop
                 main_alive = 0;
                 continue;
             }
