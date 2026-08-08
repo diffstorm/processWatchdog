@@ -40,7 +40,7 @@ long get_uptime()
 
     if(sysinfo(&s_info) != 0)
     {
-        // On failure s_info is uninitialized; returning s_info.uptime would be UB.
+        // s_info is uninitialized on failure; return 0 rather than read it (UB).
         fprintf(stderr, "sysinfo failed: %s\n", strerror(errno));
         return 0;
     }
@@ -58,8 +58,8 @@ long get_monotonic_time(void)
 
     if(clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
     {
-        // On failure ts is uninitialized; return 0 (same convention as time_ms()). Elapsed
-        // computations (now - last) then fail safe toward "not yet timed out".
+        // ts is uninitialized on failure; return 0 (as time_ms() does) rather than read it
+        // (UB). CLOCK_MONOTONIC does not fail in practice with a valid timespec.
         fprintf(stderr, "clock_gettime(CLOCK_MONOTONIC) failed: %s\n", strerror(errno));
         return 0;
     }
@@ -401,9 +401,8 @@ int parse_number(const char *ptr, int length, int *cnt)
     int i = 0;
     int sum = 0;
 
-    /* Skip leading non-digit characters. Bounded by length and stopped at NUL so a datagram
-       with no digit cannot walk past the buffer (remote OOB read); cast to unsigned char
-       because isdigit() on a negative (high-bit) char is undefined. */
+    /* Skip leading non-digits, bounded by length and NUL (else a digit-less datagram reads
+       past the buffer); unsigned-char cast because isdigit() on a negative char is UB. */
     while(i < length && *ptr != '\0' && !isdigit((unsigned char)*ptr) && *ptr != '-')
     {
         ptr++;
@@ -418,7 +417,7 @@ int parse_number(const char *ptr, int length, int *cnt)
         i++;
     }
 
-    /* Parse number (length checked before the deref; unsigned-char cast for isdigit) */
+    /* Parse digits (length checked before the deref) */
     while(i < length && isdigit((unsigned char)*ptr))
     {
         sum = 10 * sum + ((*ptr) - '0');
@@ -463,8 +462,7 @@ char *timestamp(char *ts, int len)
     time(&date);
     struct tm tm_buf;
 
-    // localtime_r (reentrant, as strtok_r is already used in this project) into a local tm;
-    // guard against NULL so a bad time_t never reaches strftime.
+    // localtime_r + NULL guard (a bad time_t must not reach strftime)
     if(localtime_r(&date, &tm_buf) != NULL)
     {
         strftime(ts, len, "%Y-%m-%d %H:%M:%S", &tm_buf);

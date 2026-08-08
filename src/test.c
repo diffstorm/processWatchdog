@@ -69,10 +69,8 @@ int test_heartbeat_parsing()
         pass = 0;
     }
 
-    // Malformed inputs must be rejected cleanly (not parsed, no OOB read). A 'p' with no
-    // digit is the case that drove the pre-fix unbounded skip loop past the buffer, so pass
-    // a length that is deliberately shorter than the buffer to model a real datagram.
-    char raw[8] = { 'p', 'x', 'y', 'z', 'q', 'r', 's', 't' }; // intentionally NOT NUL-terminated
+    // 'p' with no digit (drove the pre-fix OOB skip loop); not NUL-terminated, bounded by length
+    char raw[8] = { 'p', 'x', 'y', 'z', 'q', 'r', 's', 't' };
     cmd = cmd_parse_network(raw, (int)sizeof(raw));
 
     if(cmd.type != NET_CMD_UNKNOWN)
@@ -206,10 +204,8 @@ int test_cooldown()
 }
 
 /*
-    Regression test for the progress_timeout config-parsing bug: a configured
-    progress_timeout must survive config_parse_file() (it was previously reset to 0
-    unconditionally after parsing, silently disabling stagnation detection), while an
-    app that omits the key must default to 0 (feature disabled).
+    Regression test: a configured progress_timeout must survive config_parse_file (it was
+    once reset to 0 after parsing), while an app omitting the key must default to 0.
 */
 int test_progress_timeout_config()
 {

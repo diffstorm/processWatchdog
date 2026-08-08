@@ -28,13 +28,13 @@ jobs:
             cc: aarch64-linux-gnu-gcc
             strip: aarch64-linux-gnu-strip
             pkg: gcc-aarch64-linux-gnu
-            elf: aarch64
+            machine: AArch64   # readelf -h "Machine:" value (exact, unlike file's shared "ARM")
             native: false
           - arch: armv7
             cc: arm-linux-gnueabihf-gcc
             strip: arm-linux-gnueabihf-strip
             pkg: gcc-arm-linux-gnueabihf
-            elf: ARM
+            machine: ARM       # 32-bit ARM reports "ARM"; aarch64 reports "AArch64"
             native: false
     steps:
       - uses: actions/checkout@v4
@@ -63,10 +63,13 @@ jobs:
       - name: Verify cross binary architecture
         if: ${{ !matrix.native }}
         run: |
-          echo "Built binary:"
-          file processWatchdog
-          file processWatchdog | grep -q "${{ matrix.elf }}" || {
-            echo "ERROR: binary is not the expected ${{ matrix.arch }} (${{ matrix.elf }}) architecture"
+          test -f processWatchdog || { echo "ERROR: build produced no binary"; exit 1; }
+          MACHINE=$(readelf -h processWatchdog | sed -n 's/.*Machine:[[:space:]]*//p')
+          echo "ELF machine: $MACHINE"
+          # Exact match on the ELF machine type: AArch64 and ARM are distinct, so an armv7
+          # target cannot false-pass on an accidental aarch64 build (or vice-versa).
+          [ "$MACHINE" = "${{ matrix.machine }}" ] || {
+            echo "ERROR: expected ${{ matrix.machine }} for ${{ matrix.arch }}, got '$MACHINE'"
             exit 1
           }
 

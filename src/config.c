@@ -36,9 +36,8 @@ static time_t config_get_file_modified_time(const char *path)
 
     if(stat(path, &attr) != 0)
     {
-        // On failure attr is uninitialized; returning attr.st_mtime would be UB. Return a
-        // sentinel: config_is_file_updated compares != last_modified, so a transient failure
-        // reads as "changed" (conservative — never a stale accept).
+        // On failure attr is uninitialized (reading st_mtime would be UB); -1 reads as
+        // "changed" in config_is_file_updated (conservative, never a stale accept).
         LOGW("stat failed for %s: %s", path, strerror(errno));
         return (time_t)-1;
     }
@@ -374,11 +373,8 @@ int config_parse_file(const char *ini_path, Application_t *apps, int max_apps, A
             apps[i].stop_timeout = 10; // Default stop timeout is 10 seconds
         }
 
-        // NOTE: do NOT reset progress_timeout here — it is parsed per-app above
-        // (config_ini_handler, "progress_timeout" key) and memset to 0 at the top of
-        // this function for apps that omit it. A previous unconditional
-        // "apps[i].progress_timeout = 0;" here silently disabled the entire
-        // progress/stagnation-detection feature for every app.
+        // Do NOT reset progress_timeout here (parsed per-app above, memset to 0 for omitted
+        // keys): a prior unconditional reset silently disabled stagnation detection for all.
         apps[i].last_progress_time = (time_t)get_monotonic_time();
         // Initialize retry_count and last_failure_time
         apps[i].retry_count = 0;

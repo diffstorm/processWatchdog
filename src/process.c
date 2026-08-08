@@ -39,11 +39,8 @@
 */
 static int calculate_backoff_delay(int retry_count, int base_delay)
 {
-    // delay = base_delay * 2^(retry_count - 1), capped at 3600 seconds (1 hour).
-    // retry_count is bounded only by max_retries, which config allows up to INT_MAX, so the
-    // shift and multiply must be clamped: an unclamped 1 << (retry_count - 1) is signed-shift
-    // UB once the shift reaches the int width, and base_delay * (...) can overflow to a
-    // negative value that slips past the > 3600 cap and yields a restart storm.
+    // delay = base_delay * 2^(retry_count-1), capped at 3600s. Clamp inputs first: an
+    // unclamped shift is UB and the product can overflow negative past the cap (restart storm).
     if(base_delay >= 3600)
     {
         return 3600;
@@ -56,13 +53,11 @@ static int calculate_backoff_delay(int retry_count, int base_delay)
         shift = 0;
     }
 
-    if(shift > 12) // 2^12 = 4096 > the 3600s cap, so any larger shift is capped regardless
+    if(shift > 12) // 2^12 = 4096 already exceeds the 3600s cap
     {
         return 3600;
     }
 
-    // Here base_delay < 3600 and shift <= 12, so the product is < 3600 * 4096 (~1.5e7):
-    // no UB and no overflow even where long is 32-bit (e.g. armv7).
     long delay = (long)base_delay * (1L << shift);
 
     if(delay > 3600)

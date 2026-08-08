@@ -272,33 +272,33 @@ static const struct option long_options[] =
 static volatile sig_atomic_t kill_error = 10; // after 10 times SIGUSR1 the app exits forcefully
 static volatile sig_atomic_t main_alive = 1; // terminate application (1=true, 0=false)
 static volatile sig_atomic_t return_code = EXIT_NORMALLY;
+static volatile sig_atomic_t caught_signal = 0; // signal that caused shutdown, 0 = none
 
-// Signal handlers are async-signal-safe: they only set sig_atomic_t flags. The main loop
-// observes main_alive == 0, logs the cause (from return_code) and shuts down cleanly.
-// Logging / exit() are NOT called here — iLOG locks a non-recursive mutex and uses
-// fprintf/fopen, so doing that from signal context could self-deadlock the daemon.
+// Handlers must stay async-signal-safe: set flags only (no logging/exit — iLOG locks a
+// non-recursive mutex, so logging from signal context could self-deadlock). The main loop
+// logs the cause after it exits.
 
 // send signal INT to restart application
 void SIGINT_handler(int sig)
 {
-    UNUSED(sig);
     return_code = EXIT_RESTART;
+    caught_signal = sig;
     main_alive = 0;
 }
 
 // send signal QUIT to reboot the system
 void SIGQUIT_handler(int sig)
 {
-    UNUSED(sig);
     return_code = EXIT_REBOOT;
+    caught_signal = sig;
     main_alive = 0;
 }
 
 // send signal USR1 to terminate application
 void SIGUSR1_handler(int sig)
 {
-    UNUSED(sig);
     return_code = EXIT_NORMALLY;
+    caught_signal = sig;
     main_alive = 0;
 
     if(kill_error > 0)
@@ -307,9 +307,7 @@ void SIGUSR1_handler(int sig)
     }
     else
     {
-        // Emergency escape after 10x USR1: _exit (not exit) — no atexit/stdio flush from
-        // signal context. A clean shutdown is the normal (kill_error > 0) path.
-        _exit(EXIT_NORMALLY);
+        _exit(EXIT_NORMALLY); // _exit, not exit: no atexit/stdio flush from signal context
     }
 }
 
@@ -404,8 +402,7 @@ int main(int argc, char *argv[])
 {
     int opt;
     opterr = 0;
-    // Setup signal handlers via sigaction (well-defined mask semantics; no SA_RESTART so a
-    // signal still interrupts the UDP poll — udp_poll already handles EINTR gracefully).
+    // sigaction, no SA_RESTART: a signal interrupts the UDP poll (udp_poll handles EINTR).
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sigemptyset(&sa.sa_mask);
@@ -493,7 +490,7 @@ int main(int argc, char *argv[])
             if(main_alive)
             {
                 LOGE("UDP poll failed, exiting for supervisor restart");
-                return_code = EXIT_RESTART; // exit 2 -> run.sh re-runs us; default EXIT_NORMALLY would be a silent permanent stop
+                return_code = EXIT_RESTART; // exit 2 -> run.sh re-runs us; 0 would be a silent permanent stop
                 main_alive = 0;
                 continue;
             }
@@ -664,8 +661,7 @@ int main(int argc, char *argv[])
                     time_t now = time(NULL);
                     struct tm tm_now;
 
-                    // localtime_r + NULL guard: localtime returning NULL here would be a
-                    // direct tm_now->tm_hour NULL deref crash.
+                    // localtime_r + NULL guard (NULL would crash the tm_now.tm_hour deref)
                     if(localtime_r(&now, &tm_now) != NULL
                        && tm_now.tm_hour == apps_get_state()->reboot_params.daily_time.hour
                        && tm_now.tm_min == apps_get_state()->reboot_params.daily_time.min)
@@ -712,14 +708,11 @@ int main(int argc, char *argv[])
 #endif
     }
 
-    // Log the shutdown cause here (in the main thread) rather than in the signal handlers,
-    // which must stay async-signal-safe. Mirrors the messages the handlers used to print.
-    switch(return_code)
+    // Log a signal-triggered shutdown here (handlers stay async-signal-safe). Non-signal
+    // exits (UDP failure, file commands, periodic reboot) already log their own cause.
+    if(caught_signal != 0)
     {
-        case EXIT_RESTART:  LOGN("INT/TERM detected, Restarting"); break;
-        case EXIT_REBOOT:   LOGN("QUIT detected, Rebooting"); break;
-        case EXIT_NORMALLY: LOGN("USR1 detected, Terminating"); break;
-        default: break;
+        LOGN("Signal %d detected, shutting down (return code %d)", (int)caught_signal, return_code);
     }
 
     LOGD("%s ending...", APPNAME);
