@@ -19,6 +19,14 @@ All notable changes to this project will be documented in this file.
 - Server module now tracks sender address for UDP responses
 - Updated README.md with UDP status command documentation
 
+### Fixed
+- **Progress/stagnation detection was silently disabled**: `config_parse_file()`
+  unconditionally reset `progress_timeout` to 0 after parsing, discarding the value read
+  from the INI. Because the whole feature is gated on `progress_timeout > 0`, stagnation
+  detection never ran for any app despite being documented and shipped default-on. Removed
+  the stray reset (the initial `memset` still defaults omitting apps to 0). Added the
+  `progress_timeout_config` regression test.
+
 ## [1.4.4] - 2026-08-08
 
 ### Added
