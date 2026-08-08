@@ -6,7 +6,8 @@
 # python test_child 1 crash                        # No progress signal
 # python test_child 2 noheartbeat                  # No heartbeat at all
 # python test_child 3 crash 45                     # Send progress signal every 45 seconds
-# python test_child 7 crash                        # Circuit-breaker test (no progress, default config)
+# python test_child 7 crash                        # Circuit-breaker test (3 failures in 5 min)
+# python test_child 8 crash                        # Circuit-breaker test (2 failures in 5 min, auto-resume)
 
 import os
 import socket

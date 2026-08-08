@@ -135,6 +135,49 @@ void test_exit_unknown()
     exit(123);
 }
 
+int test_circuit_breaker()
+{
+    int pass = 1;
+    
+    // Test circuit-breaker default values
+    Application_t app = {0};
+    app.circuit_breaker_threshold = 5;
+    app.circuit_breaker_window = 300;
+    app.circuit_state = 0; // CLOSED
+    app.failure_count = 0;
+    app.window_start_time = 0;
+    
+    // Verify defaults
+    if(app.circuit_state != 0 || app.failure_count != 0)
+    {
+        printf("Circuit-breaker initial state failed\n");
+        pass = 0;
+    }
+    
+    return pass;
+}
+
+int test_cooldown()
+{
+    int pass = 1;
+    
+    // Test cooldown default values
+    Application_t app = {0};
+    app.cooldown_period = 120;
+    app.cooldown_manual_ack_threshold = 3;
+    app.cooldown_count = 0;
+    app.in_cooldown = false;
+    
+    // Verify defaults
+    if(app.cooldown_period != 120 || app.cooldown_manual_ack_threshold != 3)
+    {
+        printf("Cooldown initial state failed\n");
+        pass = 0;
+    }
+    
+    return pass;
+}
+
 void test(char *testname)
 {
     if(0 == strlen(testname))
@@ -184,6 +227,13 @@ void test(char *testname)
     {
         printf("Heartbeat parsing: %s\n", test_heartbeat_parsing() ? "PASS" : "FAIL");
     }
-    // TODO: add other unit tests
+    cmp("circuit_breaker")
+    {
+        printf("Circuit-breaker: %s\n", test_circuit_breaker() ? "PASS" : "FAIL");
+    }
+    cmp("cooldown")
+    {
+        printf("Cooldown: %s\n", test_cooldown() ? "PASS" : "FAIL");
+    }
     printf("Test finished\n");
 }

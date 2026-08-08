@@ -23,6 +23,13 @@ jobs:
       - name: Build (Release)
         run: make BUILD_TYPE=release
 
+      - name: Run unit tests
+        run: |
+          echo "Running unit tests..."
+          ./processWatchdog -t heartbeat_parse
+          ./processWatchdog -t circuit_breaker
+          ./processWatchdog -t cooldown
+
       - name: Run watchdog
         run: |
           echo "Running processWatchdog..."
