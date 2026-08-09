@@ -31,11 +31,13 @@ extern "C" {
 */
 
 /**
-    @brief Run a test
+    @brief Run a test (or "all" to run every automated unit test).
 
-    @param Test name.
+    @param testname Test name.
+    @return Process exit status: 0 if the test passed (or is a non-assertive
+            demo/fixture), non-zero if an automated unit test failed.
 */
-void test(char *testname);
+int test(char *testname);
 
 #ifdef __cplusplus
 }

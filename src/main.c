@@ -29,6 +29,7 @@
 #include "heartbeat.h"
 #include "log.h"
 #include "utils.h"
+#include "status.h"
 
 #include <libgen.h> // basename
 #include <getopt.h>
@@ -134,113 +135,48 @@ void parse_commands(char *data, int length, int socket)
         }
         break;
 
-        case NET_CMD_STATUS:
+        case NET_CMD_RESUME:
         {
-            // Find app by name
-            int app_index = -1;
             for(int i = 0; i < get_app_count(); i++)
             {
                 if(0 == strncmp(get_app_name(i), cmd.app_name, MAX_APP_NAME_LENGTH - 1))
                 {
-                    app_index = i;
-                    break;
+                    process_resume(i);
                 }
             }
+        }
+        break;
 
-            if(app_index >= 0)
+        case NET_CMD_STATUS:
+        {
+            const char *sender_ip = udp_get_last_sender_ip();
+            int sender_port = udp_get_last_sender_port();
+
+            if(sender_port <= 0)
             {
-                Application_t *apps = apps_get_array();
-                Application_t *app = &apps[app_index];
+                LOGE("Status response failed: no sender address available");
+                break;
+            }
 
-                // Determine status string
-                const char *status = "unknown";
-                if(!app->started)
+            // Empty or "*" name => reply for every app; otherwise the single named app.
+            bool all = (cmd.app_name[0] == '\0' || 0 == strcmp(cmd.app_name, "*"));
+
+            for(int i = 0; i < get_app_count(); i++)
+            {
+                if(!all && 0 != strncmp(get_app_name(i), cmd.app_name, MAX_APP_NAME_LENGTH - 1))
                 {
-                    status = "stopped";
-                }
-                else if(process_is_running(app_index))
-                {
-                    status = "running";
-                }
-                else if(app->in_cooldown)
-                {
-                    status = "cooldown";
-                }
-                else if(app->circuit_state == 1) // OPEN
-                {
-                    status = "circuit_open";
-                }
-                else
-                {
-                    status = "crashed";
+                    continue;
                 }
 
-                // Determine circuit state string
-                const char *circuit = "unknown";
-                if(app->circuit_breaker_threshold > 0)
-                {
-                    if(app->circuit_state == 0) // CLOSED
-                        circuit = "closed";
-                    else if(app->circuit_state == 1) // OPEN
-                        circuit = "open";
-                    else if(app->circuit_state == 2) // HALF_OPEN
-                        circuit = "half_open";
-                }
-                else
-                {
-                    circuit = "disabled";
-                }
-
-                // Check if ack required
-                bool ack_required = false;
-                if(app->in_cooldown && app->cooldown_manual_ack_threshold > 0 &&
-                   app->cooldown_count >= app->cooldown_manual_ack_threshold)
-                {
-                    ack_required = true;
-                }
-
-                // Calculate cooldown remaining
-                int cooldown_remaining = 0;
-                if(app->in_cooldown)
-                {
-                    long now = get_monotonic_time();
-                    if(now < app->cooldown_end_time)
-                    {
-                        cooldown_remaining = (int)(app->cooldown_end_time - now);
-                    }
-                    else
-                    {
-                        cooldown_remaining = 0;
-                    }
-                }
-
-                // Build response JSON-like string
                 char response[256];
-                snprintf(response, sizeof(response),
-                         "{\"app\":\"%s\",\"status\":\"%s\",\"circuit\":\"%s\",\"cooldown\":%d,\"failures\":%d,\"ack_required\":%s}",
-                         app->name, status, circuit, cooldown_remaining, app->failure_count,
-                         ack_required ? "true" : "false");
+                if(build_status_json(i, response, sizeof(response)) < 0)
+                {
+                    continue;
+                }
 
-                // Log and send response (for now, just log it)
-                LOGN("Status response for %s: %s", app->name, response);
-                
-                // Send response to UDP client
-                const char *sender_ip = udp_get_last_sender_ip();
-                int sender_port = udp_get_last_sender_port();
-                
-                if(sender_port > 0)
-                {
-                    udp_send(socket, response, strlen(response), sender_ip, sender_port);
-                    LOGN("Status response for %s sent to %s:%d", app->name, sender_ip, sender_port);
-                }
-                else
-                {
-                    LOGE("Status response failed: no sender address available");
-                }
-            }
-            else
-            {
-                LOGE("Status command: app %s not found", cmd.app_name);
+                udp_send(socket, response, strlen(response), sender_ip, sender_port);
+                LOGN("Status response for %s sent to %s:%d: %s",
+                     get_app_name(i), sender_ip, sender_port, response);
             }
         }
         break;
@@ -258,9 +194,9 @@ extern char *optarg;
 extern int opterr, optind;
 
 #define APPNAME     basename(argv[0])
-#define VERSION     "1.4.4"
-#define OPTSTR      "i:v:t:h"
-#define USAGE_FMT   "%s -i <file.ini> [-v|--version] [-h|--help] [-t testname]\n"
+#define VERSION     "1.4.5"
+#define OPTSTR      "i:v:t:s::jh"
+#define USAGE_FMT   "%s -i <file.ini> [-v|--version] [-h|--help] [-t testname] [-s[app]] [-j]\n"
 
 static const struct option long_options[] =
 {
@@ -272,32 +208,34 @@ static const struct option long_options[] =
 static volatile sig_atomic_t kill_error = 10; // after 10 times SIGUSR1 the app exits forcefully
 static volatile sig_atomic_t main_alive = 1; // terminate application (1=true, 0=false)
 static volatile sig_atomic_t return_code = EXIT_NORMALLY;
+static volatile sig_atomic_t caught_signal = 0; // signal that caused shutdown, 0 = none
+
+// Handlers must stay async-signal-safe: set flags only (no logging/exit — iLOG locks a
+// non-recursive mutex, so logging from signal context could self-deadlock). The main loop
+// logs the cause after it exits.
 
 // send signal INT to restart application
 void SIGINT_handler(int sig)
 {
-    UNUSED(sig);
-    LOGN("INT detected, Restarting");
-    main_alive = 0;
     return_code = EXIT_RESTART;
+    caught_signal = sig;
+    main_alive = 0;
 }
 
 // send signal QUIT to reboot the system
 void SIGQUIT_handler(int sig)
 {
-    UNUSED(sig);
-    LOGN("QUIT detected, Rebooting");
-    main_alive = 0;
     return_code = EXIT_REBOOT;
+    caught_signal = sig;
+    main_alive = 0;
 }
 
 // send signal USR1 to terminate application
 void SIGUSR1_handler(int sig)
 {
-    UNUSED(sig);
-    LOGN("USR1 detected, Terminating");
-    main_alive = 0;
     return_code = EXIT_NORMALLY;
+    caught_signal = sig;
+    main_alive = 0;
 
     if(kill_error > 0)
     {
@@ -305,8 +243,7 @@ void SIGUSR1_handler(int sig)
     }
     else
     {
-        LOGE("10x USR1 detected, Terminating forcefully");
-        exit(EXIT_NORMALLY);
+        _exit(EXIT_NORMALLY); // _exit, not exit: no atexit/stdio flush from signal context
     }
 }
 
@@ -314,7 +251,6 @@ void SIGUSR1_handler(int sig)
 void SIGUSR2_handler(int sig)
 {
     UNUSED(sig);
-    LOGN("USR2 detected");
 }
 
 void usage(char *progname, int opt)
@@ -347,8 +283,14 @@ void help(char *progname)
             "- " FILECMD_RESTARTAPP "\n"
             "- " FILECMD_REBOOT "\n");
     fprintf(stderr, GREEN "\nUDP commands:\n" RESET
-            "- s<app>    : Get status of <app>\n"
-            "  Response: JSON with status, circuit state, cooldown info, ack requirement\n");
+            "- s<app>    : Get status of <app> (empty/'*' name = all apps)\n"
+            "  Response: JSON with status, circuit, pid, cpu, mem, cooldown, failures, ack\n"
+            "- k<app>    : Resume <app> after a manual cooldown ack\n");
+    fprintf(stderr, GREEN "\nStatus client (queries a running watchdog and exits):\n" RESET
+            "  %s -i <file.ini> -s          : status of all apps (table)\n"
+            "  %s -i <file.ini> -s<app>     : status of one app\n"
+            "  %s -i <file.ini> -s -j       : raw JSON output\n",
+            progname, progname, progname);
     fprintf(stderr, GREEN "\nINI File example config:\n" RESET
             "[processWatchdog]\n"
             "udp_port = 12345\n"
@@ -402,12 +344,25 @@ int main(int argc, char *argv[])
 {
     int opt;
     opterr = 0;
-    // Setup signal handlers
-    signal(SIGINT, SIGINT_handler); // restart
-    signal(SIGTERM, SIGINT_handler); // terminate
-    signal(SIGQUIT, SIGQUIT_handler); // reboot
-    signal(SIGUSR1, SIGUSR1_handler); // terminate
-    signal(SIGUSR2, SIGUSR2_handler); // rfu
+    // Client mode: -s [app] queries the running watchdog and exits. Resolved after the
+    // config is loaded (we need the UDP port and, for all-apps, the app list).
+    bool status_query = false;
+    bool status_json = false;
+    const char *status_app = NULL;
+    // sigaction (no SA_RESTART): a signal interrupts the UDP poll; udp_poll treats EINTR as
+    // "no data", so the shutdown flags set by a handler are seen on the next loop iteration.
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sigemptyset(&sa.sa_mask);
+    sa.sa_handler = SIGINT_handler; // restart
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);  // terminate
+    sa.sa_handler = SIGQUIT_handler; // reboot
+    sigaction(SIGQUIT, &sa, NULL);
+    sa.sa_handler = SIGUSR1_handler; // terminate
+    sigaction(SIGUSR1, &sa, NULL);
+    sa.sa_handler = SIGUSR2_handler; // rfu
+    sigaction(SIGUSR2, &sa, NULL);
 
     // Scan parameters
     while((opt = getopt_long(argc, argv, OPTSTR, long_options, NULL)) != -1)
@@ -422,14 +377,22 @@ int main(int argc, char *argv[])
 
                 break;
 
-            case 't': // unit tests
-                test(optarg);
-                exit(EXIT_NORMALLY);
+            case 't': // unit tests: propagate pass/fail as the process exit status
+                exit(test(optarg) == 0 ? EXIT_NORMALLY : EXIT_CRASHED);
                 break;
 
             case 'v': // version
                 version(APPNAME);
                 exit(EXIT_NORMALLY);
+                break;
+
+            case 's': // status query client: -s [app] (optarg NULL => all apps)
+                status_query = true;
+                status_app = optarg;
+                break;
+
+            case 'j': // raw JSON output for the status client
+                status_json = true;
                 break;
 
             case 'h': // help
@@ -441,6 +404,19 @@ int main(int argc, char *argv[])
             default:
                 break;
         }
+    }
+
+    // Client mode (-s): load the config for the port + app list, query the running
+    // watchdog, print the result and exit. Must run before the daemon banner / startup.
+    if(status_query)
+    {
+        if(read_ini_file())
+        {
+            exit(EXIT_CRASHED);
+        }
+
+        exit(status_client(status_app, get_udp_port(), status_json) == 0
+             ? EXIT_NORMALLY : EXIT_CRASHED);
     }
 
     LOGN("%s started v:%s", APPNAME, VERSION);
@@ -482,7 +458,8 @@ int main(int argc, char *argv[])
         {
             if(main_alive)
             {
-                LOGE("UDP poll failed");
+                LOGE("UDP poll failed, exiting for supervisor restart");
+                return_code = EXIT_RESTART; // exit 2 -> run.sh re-runs us; 0 would be a silent permanent stop
                 main_alive = 0;
                 continue;
             }
@@ -569,7 +546,9 @@ int main(int argc, char *argv[])
                     // Log cooldown status if in cooldown
                     if(app->in_cooldown)
                     {
-                        time_t remaining = app->cooldown_end_time - time(NULL);
+                        // cooldown_end_time is monotonic (process.c), so compare against the
+                        // monotonic clock — not wall-clock time(NULL) (different epoch = garbage).
+                        time_t remaining = app->cooldown_end_time - get_monotonic_time();
                         LOGN("Cooldown active for %s: %ds remaining",
                              app->name, (int)remaining);
                     }
@@ -593,17 +572,8 @@ int main(int argc, char *argv[])
                 }
                 else if(filecmd_resume(i))
                 {
-                    Application_t *apps = apps_get_array();
-                    Application_t *app = &apps[i];
-                    
-                    LOGN("Manual ack received for %s, resuming operations", get_app_name(i));
-                    process_restart(i);
+                    process_resume(i);
                     filecmd_remove_resume(i);
-                    
-                    // Reset cooldown state
-                    app->in_cooldown = false;
-                    app->cooldown_count = 0;
-                    app->circuit_state = 0; // CLOSED
                 }
             }
             else
@@ -651,9 +621,12 @@ int main(int argc, char *argv[])
                 case REBOOT_MODE_DAILY_TIME:
                 {
                     time_t now = time(NULL);
-                    struct tm *tm_now = localtime(&now);
+                    struct tm tm_now;
 
-                    if(tm_now->tm_hour == apps_get_state()->reboot_params.daily_time.hour && tm_now->tm_min == apps_get_state()->reboot_params.daily_time.min)
+                    // localtime_r + NULL guard (NULL would crash the tm_now.tm_hour deref)
+                    if(localtime_r(&now, &tm_now) != NULL
+                       && tm_now.tm_hour == apps_get_state()->reboot_params.daily_time.hour
+                       && tm_now.tm_min == apps_get_state()->reboot_params.daily_time.min)
                     {
                         LOGN("Periodic reboot triggered (daily time)");
                         main_alive = 0;
@@ -695,6 +668,13 @@ int main(int argc, char *argv[])
         }
 
 #endif
+    }
+
+    // Log a signal-triggered shutdown here (handlers stay async-signal-safe). Non-signal
+    // exits (UDP failure, file commands, periodic reboot) already log their own cause.
+    if(caught_signal != 0)
+    {
+        LOGN("Signal %d detected, shutting down (return code %d)", (int)caught_signal, return_code);
     }
 
     LOGD("%s ending...", APPNAME);

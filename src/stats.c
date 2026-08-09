@@ -145,6 +145,12 @@ static float get_process_cpu_usage(int index, int pid)
 
     unsigned long long process_time = utime + stime + cutime + cstime;
     long ticks_per_sec = sysconf(_SC_CLK_TCK);
+
+    if(ticks_per_sec <= 0)
+    {
+        // Guard the divisor below: sysconf can return -1, and 0 would be a SIGFPE.
+        return -1.0f;
+    }
     //long nprocs        = sysconf(_SC_NPROCESSORS_ONLN);
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
@@ -302,8 +308,16 @@ void stats_update_heartbeat_time(int index, time_t heartbeatTime)
 void stats_update_first_heartbeat_time(int index, time_t heartbeatTime)
 {
     int start_count = stats[index].start_count + stats[index].crash_count + stats[index].heartbeat_reset_count;
-    // Calculate average first heartbeat time
-    stats[index].avg_first_heartbeat_time = ((stats[index].avg_first_heartbeat_time * (start_count - 1)) + heartbeatTime) / start_count;
+    // Guard the division: start_count == 0 would be a SIGFPE; count == 1 reduces to the old
+    // formula, so this is byte-identical for count >= 1 (mirrors updateHeartbeatCountAverage).
+    if(start_count <= 1)
+    {
+        stats[index].avg_first_heartbeat_time = heartbeatTime;
+    }
+    else
+    {
+        stats[index].avg_first_heartbeat_time = ((stats[index].avg_first_heartbeat_time * (start_count - 1)) + heartbeatTime) / start_count;
+    }
 
     // Update maximum first heartbeat time
     if(heartbeatTime > stats[index].max_first_heartbeat_time)
@@ -400,13 +414,36 @@ void stats_update_memory_usage(int index, int pid)
     }
 }
 
+float stats_get_cpu_percent(int index)
+{
+    if(index < 0 || index >= MAX_APPS)
+    {
+        return 0.0f;
+    }
+
+    return stats[index].current_cpu_percent;
+}
+
+size_t stats_get_memory_kb(int index)
+{
+    if(index < 0 || index >= MAX_APPS)
+    {
+        return 0;
+    }
+
+    return stats[index].current_memory_kb;
+}
+
 #define DATE_BUFFER_SIZE 22
 
 static char *printDate(const time_t *t, char *buf, size_t buf_size)
 {
-    if((*t) > 0)
+    struct tm tm_buf;
+
+    // localtime_r + NULL guard (a corrupt time_t -> NULL -> strftime deref crash)
+    if((*t) > 0 && localtime_r(t, &tm_buf) != NULL)
     {
-        strftime(buf, buf_size, "%Y-%m-%d %H:%M:%S", localtime(t));
+        strftime(buf, buf_size, "%Y-%m-%d %H:%M:%S", &tm_buf);
     }
     else
     {

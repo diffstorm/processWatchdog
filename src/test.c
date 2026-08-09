@@ -1,239 +1,313 @@
 /**
-    @file stats.c
-    @brief Process Watchdog Application Manager
+    @file test.c
+    @brief Integration / runtime checks reachable via `-t <name>`.
 
-    The Process Watchdog application manages the processes listed in the configuration file.
-    It listens to a specified UDP port for heartbeat messages from these processes, which must
-    periodically send their PID. If any process stops running or fails to send its PID over UDP
-    within the expected interval, the Process Watchdog application will restart the process.
+    These run through the built binary end-to-end (real config parsing, the app array,
+    status building, heartbeat logic) — the things an operator wants to verify on a box
+    and that CI gates on via `-t all`. Pure-function unit tests (parsing, backoff, JSON
+    field extraction) live in the GTest suite (test/server_test.cpp), not here.
 
-    The application ensures high reliability and availability by continuously monitoring and
-    restarting processes as necessary. It also logs various statistics about the monitored
-    processes, including start times, crash times, and heartbeat intervals.
+    The exit_* entries are manual supervisor fixtures (they call exit() with a specific
+    code); they are intentionally excluded from `-t all`.
 
-    @date 2023-01-01
-    @version 1.0
     @author by Eray Ozturk | erayozturk1@gmail.com
     @url github.com/diffstorm
     @license GPL-3 License
 */
 
 #include "apps.h"
-#include "server.h"
-#include "filecmd.h"
+#include "config.h"
 #include "log.h"
 #include "utils.h"
 #include "cmd.h"
+#include "process.h"
+#include "status.h"
+#include "heartbeat.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 /* internal macros */
 #define cmp(x)  if(0 == strcmp(testname, x))
-#define chk(x)  printf("%s\n", false != x() ? "Success" : "Fail!");
 
-int test_heartbeat_parsing()
+// Writes a small multi-app INI to path; returns 0 on success.
+static int write_sample_ini(const char *path)
 {
-    net_command_t cmd;
-    char data[32];
+    FILE *f = fopen(path, "w");
+    if(!f)
+    {
+        return -1;
+    }
+
+    fprintf(f,
+            "[processWatchdog]\n"
+            "udp_port = 12345\n"
+            "\n"
+            "[app:WithProgress]\n"
+            "start_delay = 5\n"
+            "heartbeat_delay = 10\n"
+            "heartbeat_interval = 15\n"
+            "progress_timeout = 30\n"
+            "cmd = /bin/true\n"
+            "\n"
+            "[app:Plain]\n"
+            "start_delay = 5\n"
+            "heartbeat_delay = 10\n"
+            "heartbeat_interval = 15\n"
+            "cmd = /bin/true\n");
+    fclose(f);
+    return 0;
+}
+
+// Asserts that a config (the given app-section body, with a [processWatchdog] header
+// prepended) is REJECTED by the parser. Prints and returns 0 on failure to reject, else 1.
+static int config_is_rejected(const char *label, const char *app_body)
+{
+    const char *path = "test_pw_reject.ini";
+    FILE *f = fopen(path, "w");
+    if(!f)
+    {
+        printf("config_parse: could not create temp ini for '%s'\n", label);
+        return 0;
+    }
+    fprintf(f, "[processWatchdog]\nudp_port = 12345\n\n%s", app_body);
+    fclose(f);
+
+    Application_t apps[MAX_APPS];
+    AppState_t state = {0};
+    int rc = config_parse_file(path, apps, MAX_APPS, &state);
+    remove(path);
+
+    if(rc == 0)
+    {
+        printf("config_parse: invalid config '%s' was NOT rejected\n", label);
+        return 0;
+    }
+    return 1;
+}
+
+/*
+    Config parse (end-to-end): the real parser must load every app, preserve a configured
+    progress_timeout (regression B1: it was reset to 0 after parse), and default it to 0 for
+    apps that omit it.
+*/
+static int test_config_parse(void)
+{
+    const char *path = "test_pw_config.ini";
+    if(write_sample_ini(path))
+    {
+        printf("config_parse: could not create temp ini\n");
+        return 1;
+    }
+
+    Application_t apps[MAX_APPS];
+    AppState_t state = {0};
+    int rc = config_parse_file(path, apps, MAX_APPS, &state);
+    remove(path);
+
+    if(rc != 0)
+    {
+        printf("config_parse: parse failed (rc=%d)\n", rc);
+        return 1;
+    }
+
     int pass = 1;
-    // Test standard heartbeat (no progress)
-    snprintf(data, sizeof(data), "p12345");
-    cmd = cmd_parse_network(data, strlen(data));
-
-    if(cmd.type != NET_CMD_HEARTBEAT || cmd.pid != 12345 || cmd.has_progress_flag != 0)
+    if(state.app_count != 2)
     {
-        printf("Standard heartbeat failed\n");
+        printf("config_parse: expected 2 apps, got %d\n", state.app_count);
         pass = 0;
     }
 
-    // Test heartbeat with progress signal
-    snprintf(data, sizeof(data), "p12345+");
-    cmd = cmd_parse_network(data, strlen(data));
-
-    if(cmd.type != NET_CMD_HEARTBEAT || cmd.pid != 12345 || cmd.has_progress_flag != 1)
+    for(int i = 0; i < state.app_count; i++)
     {
-        printf("Heartbeat with progress failed\n");
-        pass = 0;
+        if(0 == strcmp(apps[i].name, "WithProgress") && apps[i].progress_timeout != 30)
+        {
+            printf("config_parse: progress_timeout not preserved (got %d, want 30)\n",
+                   apps[i].progress_timeout);
+            pass = 0;
+        }
+        if(0 == strcmp(apps[i].name, "Plain") && apps[i].progress_timeout != 0)
+        {
+            printf("config_parse: omitted progress_timeout should default 0 (got %d)\n",
+                   apps[i].progress_timeout);
+            pass = 0;
+        }
     }
 
-    // Test heartbeat with progress signal (different PID)
-    snprintf(data, sizeof(data), "p9999+");
-    cmd = cmd_parse_network(data, strlen(data));
+    // Invalid configs must be rejected at load time, not booted with bad state:
+    //  - app name outside [A-Za-z0-9_-] (would break status JSON / file-command names)
+    //  - an app section with no cmd (would try to run an empty command)
+    //  - a duplicate [app:X] section (would silently overwrite the first)
+    pass &= config_is_rejected("bad name",
+                               "[app:bad\"name]\nheartbeat_interval = 15\ncmd = /bin/true\n");
+    pass &= config_is_rejected("missing cmd",
+                               "[app:NoCmd]\nheartbeat_interval = 15\n");
+    pass &= config_is_rejected("duplicate section",
+                               "[app:Dup]\ncmd = /bin/true\n\n[app:Other]\ncmd = /bin/true\n\n"
+                               "[app:Dup]\ncmd = /bin/false\n");
 
-    if(cmd.type != NET_CMD_HEARTBEAT || cmd.pid != 9999 || cmd.has_progress_flag != 1)
+    return pass ? 0 : 1;
+}
+
+/*
+    Status pipeline (end-to-end): load config, build an app's status JSON, and read it back
+    with the same field reader the client uses. Guards the operator-facing status contract.
+*/
+static int test_status_json(void)
+{
+    const char *path = "test_pw_status.ini";
+    if(write_sample_ini(path))
     {
-        printf("Heartbeat with progress (PID 9999) failed\n");
-        pass = 0;
+        printf("status_json: could not create temp ini\n");
+        return 1;
     }
 
-    return pass;
-}
+    Application_t apps[MAX_APPS];
+    AppState_t state = {0};
+    int rc = config_parse_file(path, apps, MAX_APPS, &state);
+    remove(path);
 
-void test_filecmd()
-{
-    if(!read_ini_file())
+    if(rc != 0 || state.app_count < 1)
     {
-        // TODO
-    }
-}
-
-void test_config()
-{
-    if(read_ini_file())
-    {
-        printf("Error on reading the ini\n");
+        printf("status_json: config load failed\n");
+        return 1;
     }
 
-    for(int i = 0; i < get_app_count(); i++)
+    // build_status_json reads the live app array, so publish the parsed apps into it.
+    memcpy(apps_get_array(), apps, sizeof(Application_t) * state.app_count);
+    *apps_get_state() = state;
+
+    char json[256];
+    if(build_status_json(0, json, sizeof(json)) <= 0)
     {
-        print_app(i);
+        printf("status_json: build failed\n");
+        return 1;
     }
-}
 
-void test_log()
-{
-    for(int i = 0; i < (int)LOG_PRIORITY_MAX; ++i)
-    {
-        LOGE("LOG test iteration %d", i);
-    }
-}
-
-void test_delay()
-{
-    int ms = 4500;
-    clk_t t = time_ms();
-    delay_ms(ms);
-    t = elapsed_ms(t);
-    printf("Waited\t\t%d ms\nMeasured\t%llu ms\n", ms, t);
-}
-
-void test_exit_normal()
-{
-    printf("Exit normal\n");
-    exit(EXIT_NORMALLY);
-}
-
-void test_exit_crash()
-{
-    printf("Exit crash\n");
-    exit(EXIT_CRASHED);
-}
-
-void test_exit_restart()
-{
-    printf("Exit restart\n");
-    exit(EXIT_RESTART);
-}
-
-void test_exit_reboot()
-{
-    printf("Exit reboot\n");
-    exit(EXIT_REBOOT);
-}
-
-void test_exit_unknown()
-{
-    printf("Exit unknown\n");
-    exit(123);
-}
-
-int test_circuit_breaker()
-{
     int pass = 1;
-    
-    // Test circuit-breaker default values
-    Application_t app = {0};
-    app.circuit_breaker_threshold = 5;
-    app.circuit_breaker_window = 300;
-    app.circuit_state = 0; // CLOSED
-    app.failure_count = 0;
-    app.window_start_time = 0;
-    
-    // Verify defaults
-    if(app.circuit_state != 0 || app.failure_count != 0)
+    char v[32];
+    // A not-started app must report "stopped", and the app name must round-trip.
+    if(status_extract_field(json, "app", v, sizeof(v)) != 0 || 0 != strcmp(v, "WithProgress"))
     {
-        printf("Circuit-breaker initial state failed\n");
+        printf("status_json: app field wrong ('%s')\n", v);
         pass = 0;
     }
-    
-    return pass;
+    if(status_extract_field(json, "status", v, sizeof(v)) != 0 || 0 != strcmp(v, "stopped"))
+    {
+        printf("status_json: status should be 'stopped' for a not-started app (got '%s')\n", v);
+        pass = 0;
+    }
+
+    return pass ? 0 : 1;
 }
 
-int test_cooldown()
+/*
+    Heartbeat timeout (end-to-end): with a fresh heartbeat the app is healthy; once the
+    interval elapses (simulated by ageing last_heartbeat) it must be reported as timed out.
+*/
+static int test_heartbeat_timeout(void)
 {
+    Application_t *app = &apps_get_array()[0];
+    memset(app, 0, sizeof(*app));
+    app->started = true;
+    app->heartbeat_interval = 10;
+    app->first_heartbeat = true; // use the regular interval, not the first-heartbeat grace
+
     int pass = 1;
-    
-    // Test cooldown default values
-    Application_t app = {0};
-    app.cooldown_period = 120;
-    app.cooldown_manual_ack_threshold = 3;
-    app.cooldown_count = 0;
-    app.in_cooldown = false;
-    
-    // Verify defaults
-    if(app.cooldown_period != 120 || app.cooldown_manual_ack_threshold != 3)
+
+    heartbeat_update_time(0);            // fresh heartbeat now
+    if(heartbeat_is_timeout(0))
     {
-        printf("Cooldown initial state failed\n");
+        printf("heartbeat_timeout: fresh heartbeat wrongly reported as timed out\n");
         pass = 0;
     }
-    
-    return pass;
+
+    // Age the last heartbeat well past the interval.
+    app->last_heartbeat = (time_t)(get_monotonic_time() - (app->heartbeat_interval + 5));
+    if(!heartbeat_is_timeout(0))
+    {
+        printf("heartbeat_timeout: aged heartbeat not reported as timed out\n");
+        pass = 0;
+    }
+
+    return pass ? 0 : 1;
 }
 
-void test(char *testname)
+// --- Supervisor fixtures: exit with a specific code (manual use; not part of `-t all`) ---
+
+static void test_exit_normal(void)  { printf("Exit normal\n");  exit(EXIT_NORMALLY); }
+static void test_exit_crash(void)   { printf("Exit crash\n");   exit(EXIT_CRASHED); }
+static void test_exit_restart(void) { printf("Exit restart\n"); exit(EXIT_RESTART); }
+static void test_exit_reboot(void)  { printf("Exit reboot\n");  exit(EXIT_REBOOT); }
+static void test_exit_unknown(void) { printf("Exit unknown\n"); exit(123); }
+
+/* Table of automated integration tests: each returns 0 on pass. Run individually or via "all". */
+typedef int (*test_fn_t)(void);
+static const struct { const char *name; test_fn_t fn; } integration_tests[] =
+{
+    { "config_parse",      test_config_parse },
+    { "status_json",       test_status_json },
+    { "heartbeat_timeout", test_heartbeat_timeout },
+};
+
+// Runs one integration test by name; prints PASS/FAIL. Returns 0 pass / 1 fail / -1 not found.
+static int run_integration_test(const char *name)
+{
+    for(size_t i = 0; i < sizeof(integration_tests) / sizeof(integration_tests[0]); i++)
+    {
+        if(0 == strcmp(name, integration_tests[i].name))
+        {
+            int rc = integration_tests[i].fn();
+            printf("%s: %s\n", integration_tests[i].name, rc == 0 ? "PASS" : "FAIL");
+            return rc == 0 ? 0 : 1;
+        }
+    }
+
+    return -1;
+}
+
+/*
+    Runs a test by name and returns a process exit status: 0 = pass, non-zero = fail, so the
+    caller (main) can propagate it to CI. "all" runs every automated integration test.
+*/
+int test(char *testname)
 {
     if(0 == strlen(testname))
     {
         printf("Invalid testname!\n");
-        return;
+        return 1;
     }
 
     printf("\nTest: %s\n", testname);
-    cmp("filecmd")
+
+    if(0 == strcmp(testname, "all"))
     {
-        test_filecmd();
+        int failures = 0;
+
+        for(size_t i = 0; i < sizeof(integration_tests) / sizeof(integration_tests[0]); i++)
+        {
+            failures += run_integration_test(integration_tests[i].name);
+        }
+
+        printf("Test finished: %d failure(s)\n", failures);
+        return failures == 0 ? 0 : 1;
     }
-    cmp("config")
+
+    int rc = run_integration_test(testname);
+    if(rc >= 0)
     {
-        test_config();
+        printf("Test finished\n");
+        return rc;
     }
-    cmp("log")
-    {
-        test_log();
-    }
-    cmp("delay")
-    {
-        test_delay();
-    }
-    cmp("exit_normal")
-    {
-        test_exit_normal();
-    }
-    cmp("exit_crash")
-    {
-        test_exit_crash();
-    }
-    cmp("exit_restart")
-    {
-        test_exit_restart();
-    }
-    cmp("exit_reboot")
-    {
-        test_exit_reboot();
-    }
-    cmp("exit_unknown")
-    {
-        test_exit_unknown();
-    }
-    cmp("heartbeat_parse")
-    {
-        printf("Heartbeat parsing: %s\n", test_heartbeat_parsing() ? "PASS" : "FAIL");
-    }
-    cmp("circuit_breaker")
-    {
-        printf("Circuit-breaker: %s\n", test_circuit_breaker() ? "PASS" : "FAIL");
-    }
-    cmp("cooldown")
-    {
-        printf("Cooldown: %s\n", test_cooldown() ? "PASS" : "FAIL");
-    }
-    printf("Test finished\n");
+
+    // Supervisor fixtures (exit with a specific code; not part of `-t all`).
+    cmp("exit_normal")  { test_exit_normal(); }
+    cmp("exit_crash")   { test_exit_crash(); }
+    cmp("exit_restart") { test_exit_restart(); }
+    cmp("exit_reboot")  { test_exit_reboot(); }
+    cmp("exit_unknown") { test_exit_unknown(); }
+
+    printf("Unknown test: %s\n", testname);
+    return 1;
 }

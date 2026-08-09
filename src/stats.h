@@ -109,4 +109,20 @@ void stats_update_cpu_usage(int index, int pid);
 */
 void stats_update_memory_usage(int index, int pid);
 
+/**
+    @brief Returns the most recent CPU usage percentage for the application.
+
+    @param index Index of the application.
+    @return Current CPU usage percentage.
+*/
+float stats_get_cpu_percent(int index);
+
+/**
+    @brief Returns the most recent memory usage in KB for the application.
+
+    @param index Index of the application.
+    @return Current memory usage in KB.
+*/
+size_t stats_get_memory_kb(int index);
+
 #endif // STATS_H

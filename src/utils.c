@@ -37,11 +37,12 @@ char *pstrcpy(char *s1, const char *s2)
 long get_uptime()
 {
     struct sysinfo s_info;
-    int error = sysinfo(&s_info);
 
-    if(error != 0)
+    if(sysinfo(&s_info) != 0)
     {
-        fprintf(stderr, "code error = %d\n", error);
+        // s_info is uninitialized on failure; return 0 rather than read it (UB).
+        fprintf(stderr, "sysinfo failed: %s\n", strerror(errno));
+        return 0;
     }
 
     return s_info.uptime;
@@ -54,7 +55,15 @@ long get_uptime()
 long get_monotonic_time(void)
 {
     struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
+
+    if(clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+    {
+        // ts is uninitialized on failure; return 0 (as time_ms() does) rather than read it
+        // (UB). CLOCK_MONOTONIC does not fail in practice with a valid timespec.
+        fprintf(stderr, "clock_gettime(CLOCK_MONOTONIC) failed: %s\n", strerror(errno));
+        return 0;
+    }
+
     return ts.tv_sec;
 }
 
@@ -297,40 +306,6 @@ void f_remove(const char *filename)
     }
 }
 
-unsigned int find_replace_text(char *find, char *rep, char *buf, long size)
-{
-    long i;
-    unsigned rpc = 0;
-    size_t j, flen, rlen;
-    flen = strlen(find);
-    rlen = strlen(rep);
-
-    for(i = 0; i < size; i++)
-    {
-        /* if char doesn't match first in find, continue */
-        if(buf[i] != *find)
-        {
-            continue;
-        }
-
-        /* if find found, replace with rep */
-        if(strncmp(&buf[i], find, flen) == 0)
-        {
-            for(j = 0; buf[i + j] && j < rlen; j++)
-            {
-                buf[i + j] = rep[j];
-            }
-
-            if(buf[i + j])
-            {
-                rpc++;
-            }
-        }
-    }
-
-    return rpc;
-}
-
 char *sgets(char *s, int n, const char **strp)
 {
     if(**strp == '\0')
@@ -420,30 +395,43 @@ void *findin(void *haystack, size_t haystacksize, void *needle, size_t needlesiz
     return 0;
 }
 
-int parse_number(const char *ptr, int length, char *cnt)
+int parse_number(const char *ptr, int length, int *cnt)
 {
-    char minus = 0, i = 0;
+    char minus = 0;
+    int i = 0;
     int sum = 0;
 
-    /* Skip non-digit characters */
-    while(!isdigit(*ptr) && *ptr != '-')
+    /* Skip leading non-digits, bounded by length and NUL (else a digit-less datagram reads
+       past the buffer); unsigned-char cast because isdigit() on a negative char is UB. */
+    while(i < length && *ptr != '\0' && !isdigit((unsigned char)*ptr) && *ptr != '-')
     {
         ptr++;
         i++;
     }
 
     /* Check for minus character */
-    if(*ptr == '-')
+    if(i < length && *ptr == '-')
     {
         minus = 1;
         ptr++;
         i++;
     }
 
-    /* Parse number */
-    while(isdigit(*ptr) && i < length)
+    /* Parse digits (length checked before the deref). Clamp at INT32_MAX rather than let
+       sum = 10*sum + d overflow (signed overflow is UB) on a long digit run from untrusted UDP. */
+    while(i < length && isdigit((unsigned char)*ptr))
     {
-        sum = 10 * sum + ((*ptr) - '0');
+        int digit = *ptr - '0';
+
+        if(sum > (INT32_MAX - digit) / 10)
+        {
+            sum = INT32_MAX;
+        }
+        else
+        {
+            sum = 10 * sum + digit;
+        }
+
         ptr++;
         i++;
     }
@@ -479,24 +467,22 @@ bool parse_int(const char *ptr, int min_val, int max_val, int *result)
     return true;
 }
 
-void substring(char s[], char sub[], int p, int l)
-{
-    int c = 0;
-
-    while(c < l)
-    {
-        sub[c] = s[p + c - 1];
-        c++;
-    }
-
-    sub[c] = '\0';
-}
-
 char *timestamp(char *ts, int len)
 {
     time_t date;
     time(&date);
-    strftime(ts, len, "%Y-%m-%d %H:%M:%S", localtime(&date));
+    struct tm tm_buf;
+
+    // localtime_r + NULL guard (a bad time_t must not reach strftime)
+    if(localtime_r(&date, &tm_buf) != NULL)
+    {
+        strftime(ts, len, "%Y-%m-%d %H:%M:%S", &tm_buf);
+    }
+    else if(len > 0)
+    {
+        ts[0] = '\0';
+    }
+
     return ts;
 }
 

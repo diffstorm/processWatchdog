@@ -10,27 +10,84 @@ permissions:
   contents: write   # required to push tags & create releases
 
 jobs:
+  # GTest/CMake unit suite (test/server_test.cpp). Previously never run in CI.
+  gtest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GTest + CMake
+        run: sudo apt-get update && sudo apt-get install -y cmake libgtest-dev
+      - name: Build and run unit tests
+        run: |
+          mkdir build && cd build
+          cmake ..
+          make
+          ctest --output-on-failure
+
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false   # one architecture failing must not block the others
+      matrix:
+        include:
+          # Native target: built with the default toolchain AND functionally tested (the
+          # binary runs on the x86_64 runner, so it gets the full -t suite + monitor.sh).
+          - arch: x86_64
+            cc: gcc
+            strip: strip
+            native: true
+          # Cross targets: compiled with a Linux cross-toolchain and ELF-arch-verified only
+          # (they cannot execute on the x86_64 runner). The native job is the functional gate.
+          - arch: aarch64
+            cc: aarch64-linux-gnu-gcc
+            strip: aarch64-linux-gnu-strip
+            pkg: gcc-aarch64-linux-gnu
+            machine: AArch64   # readelf -h "Machine:" value (exact, unlike file's shared "ARM")
+            native: false
+          - arch: armv7
+            cc: arm-linux-gnueabihf-gcc
+            strip: arm-linux-gnueabihf-strip
+            pkg: gcc-arm-linux-gnueabihf
+            machine: ARM       # 32-bit ARM reports "ARM"; aarch64 reports "AArch64"
+            native: false
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0     # ensure full history & tags are available
 
+      - name: Install cross toolchain
+        if: matrix.pkg != ''
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.pkg }}
+
       - name: Clean build
         run: make clean || true
 
       - name: Build (Release)
-        run: make BUILD_TYPE=release
+        run: make BUILD_TYPE=release CC=${{ matrix.cc }} STRIP=${{ matrix.strip }}
 
-      - name: Run unit tests
+      - name: Run unit tests (native only)
+        if: matrix.native
         run: |
           echo "Running unit tests..."
-          ./processWatchdog -t heartbeat_parse
-          ./processWatchdog -t circuit_breaker
-          ./processWatchdog -t cooldown
+          # 'all' runs every automated unit test and returns non-zero on any failure,
+          # so a broken assertion now fails the build (previously -t always exited 0).
+          ./processWatchdog -t all
 
-      - name: Run watchdog
+      - name: Verify cross binary architecture
+        if: ${{ !matrix.native }}
+        run: |
+          test -f processWatchdog || { echo "ERROR: build produced no binary"; exit 1; }
+          MACHINE=$(readelf -h processWatchdog | sed -n 's/.*Machine:[[:space:]]*//p')
+          echo "ELF machine: $MACHINE"
+          # Exact match on the ELF machine type: AArch64 and ARM are distinct, so an armv7
+          # target cannot false-pass on an accidental aarch64 build (or vice-versa).
+          [ "$MACHINE" = "${{ matrix.machine }}" ] || {
+            echo "ERROR: expected ${{ matrix.machine }} for ${{ matrix.arch }}, got '$MACHINE'"
+            exit 1
+          }
+
+      - name: Run watchdog (native only)
+        if: matrix.native
         run: |
           echo "Running processWatchdog..."
           chmod +x monitor.sh
@@ -40,11 +97,35 @@ jobs:
           echo "Standard Error:"
           cat release_watchdog_stderr.log
 
-      # --- Release automation (only runs on push to main) ---
+      - name: Name binary per architecture
+        run: mv processWatchdog processWatchdog-linux-${{ matrix.arch }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: processWatchdog-linux-${{ matrix.arch }}
+          path: processWatchdog-linux-${{ matrix.arch }}
+          if-no-files-found: error
+
+  # --- Release automation: runs once after all architectures build, only on push to main ---
+  release:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: processWatchdog-linux-*
+          path: dist
+          merge-multiple: true   # flatten all artifacts into dist/
 
       - name: Extract version from main.c
         id: get_version
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           VERSION=$(grep '#define VERSION' src/main.c | sed -E 's/.*"([^"]+)".*/\1/')
           if [ -z "$VERSION" ]; then
@@ -55,7 +136,6 @@ jobs:
 
       - name: Check if tag exists remotely
         id: check_tag
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           git fetch --tags --force
           TAG="v${{ steps.get_version.outputs.version }}"
@@ -68,17 +148,18 @@ jobs:
           fi
 
       - name: Create tag
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.check_tag.outputs.exists == 'false'
+        if: steps.check_tag.outputs.exists == 'false'
         run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
+          git config user.name "diffstorm"
+          git config user.email "diffstorm@gmail.com"
           TAG="v${{ steps.get_version.outputs.version }}"
           git tag "${TAG}"
           git push origin "${TAG}"
 
       - name: Create GitHub Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.check_tag.outputs.exists == 'false'
+        if: steps.check_tag.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.get_version.outputs.version }}
           generate_release_notes: true
+          files: dist/processWatchdog-linux-*   # attach all Linux arch binaries

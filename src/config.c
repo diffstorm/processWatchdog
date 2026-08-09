@@ -33,7 +33,15 @@
 static time_t config_get_file_modified_time(const char *path)
 {
     struct stat attr;
-    stat(path, &attr);
+
+    if(stat(path, &attr) != 0)
+    {
+        // On failure attr is uninitialized (reading st_mtime would be UB); -1 reads as
+        // "changed" in config_is_file_updated (conservative, never a stale accept).
+        LOGW("stat failed for %s: %s", path, strerror(errno));
+        return (time_t)-1;
+    }
+
     return attr.st_mtime;
 }
 
@@ -58,6 +66,31 @@ static int config_ini_handler(void *user, const char *section, const char *name,
                 {
                     LOGE("Empty app name in section header: [%s]", section);
                     return 0; // Error
+                }
+
+                // Restrict names to [A-Za-z0-9_-]: they flow into the status JSON (unescaped)
+                // and into file-command filenames, so reject anything else at load time.
+                for(const char *c = app_name; *c; c++)
+                {
+                    if(!((*c >= 'A' && *c <= 'Z') || (*c >= 'a' && *c <= 'z') ||
+                         (*c >= '0' && *c <= '9') || *c == '_' || *c == '-'))
+                    {
+                        LOGE("Invalid app name [%s]: only A-Za-z0-9_- allowed", section);
+                        return 0; // Error
+                    }
+                }
+
+                // Reject a duplicate [app:X] rather than silently overwriting the first.
+                // (Catches duplicates separated by other sections; two byte-identical headers
+                // back-to-back collapse in inih before we see them, but that is not a realistic
+                // hand-written config.)
+                for(int j = 0; j < state->app_count; j++)
+                {
+                    if(strcmp(apps[j].name, app_name) == 0)
+                    {
+                        LOGE("Duplicate app section [%s]", section);
+                        return 0; // Error
+                    }
                 }
 
                 strncpy(apps[state->app_count].name, app_name, MAX_APP_NAME_LENGTH - 1);
@@ -293,13 +326,14 @@ static int config_ini_handler(void *user, const char *section, const char *name,
         }
         else if(strcmp(name, "cmd") == 0)
         {
-            snprintf(apps[index].cmd, MAX_APP_CMD_LENGTH, "%s", value);
-
+            // Reject before copying, so a too-long cmd is never stored truncated.
             if(strlen(value) >= MAX_APP_CMD_LENGTH)
             {
                 LOGE("Invalid cmd for app %s - longer than %d characters", apps[index].name, MAX_APP_CMD_LENGTH);
                 return 0;
             }
+
+            snprintf(apps[index].cmd, MAX_APP_CMD_LENGTH, "%s", value);
         }
     }
 
@@ -341,7 +375,11 @@ int config_parse_file(const char *ini_path, Application_t *apps, int max_apps, A
     // Prepare user data for the handler
     void *user_data[2] = { apps, state };
 
-    if(ini_parse(ini_path, config_ini_handler, user_data) < 0)
+    // ini_parse returns 0 on success, the line number of the first error on a handler
+    // rejection (a positive value), or negative on file-open/alloc error. Treat ANY
+    // non-zero result as failure — otherwise a handler that rejected a bad value (invalid
+    // app name, duplicate section, out-of-range int) would be silently accepted.
+    if(ini_parse(ini_path, config_ini_handler, user_data) != 0)
     {
         LOGE("Failed to parse INI file %s", ini_path);
         return 1;
@@ -365,7 +403,8 @@ int config_parse_file(const char *ini_path, Application_t *apps, int max_apps, A
             apps[i].stop_timeout = 10; // Default stop timeout is 10 seconds
         }
 
-        apps[i].progress_timeout = 0;
+        // Do NOT reset progress_timeout here (parsed per-app above, memset to 0 for omitted
+        // keys): a prior unconditional reset silently disabled stagnation detection for all.
         apps[i].last_progress_time = (time_t)get_monotonic_time();
         // Initialize retry_count and last_failure_time
         apps[i].retry_count = 0;
@@ -385,6 +424,16 @@ int config_parse_file(const char *ini_path, Application_t *apps, int max_apps, A
         apps[i].in_cooldown = false;
         apps[i].cooldown_start_time = 0;
         apps[i].cooldown_end_time = 0;
+    }
+
+    // cmd is mandatory: an app with no cmd= would try to run an empty command. Reject loudly.
+    for(int i = 0; i < state->app_count; i++)
+    {
+        if(apps[i].cmd[0] == '\0')
+        {
+            LOGE("App %s has no 'cmd' — refusing to start", apps[i].name);
+            return 1;
+        }
     }
 
     LOGD("%d processes have found in the ini file %s", state->app_count, ini_path);

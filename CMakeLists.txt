@@ -23,6 +23,7 @@ add_executable(processWatchdog
     src/process.c
     src/server.c
     src/stats.c
+    src/status.c
     src/test.c
     src/utils.c
 )

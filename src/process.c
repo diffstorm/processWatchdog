@@ -37,18 +37,35 @@
     @param base_delay Base delay in seconds.
     @return Delay in seconds to wait before next retry.
 */
-static int calculate_backoff_delay(int retry_count, int base_delay)
+int calculate_backoff_delay(int retry_count, int base_delay)
 {
-    // delay = base_delay * 2^(retry_count - 1)
-    // Cap the delay to prevent excessive waits (max 3600 seconds = 1 hour)
-    int delay = base_delay * (1 << (retry_count - 1));
+    // delay = base_delay * 2^(retry_count-1), capped at 3600s. Clamp inputs first: an
+    // unclamped shift is UB and the product can overflow negative past the cap (restart storm).
+    if(base_delay >= 3600)
+    {
+        return 3600;
+    }
+
+    int shift = retry_count - 1;
+
+    if(shift < 0)
+    {
+        shift = 0;
+    }
+
+    if(shift > 12) // 2^12 = 4096 already exceeds the 3600s cap
+    {
+        return 3600;
+    }
+
+    long delay = (long)base_delay * (1L << shift);
 
     if(delay > 3600)
     {
         delay = 3600;
     }
 
-    return delay;
+    return (int)delay;
 }
 
 /**
@@ -80,9 +97,7 @@ static bool should_restart_with_backoff(int app_index)
     if(app->last_failure_time > 0)
     {
         int delay = calculate_backoff_delay(app->retry_count + 1, app->base_delay);
-        struct timespec ts;
-        clock_gettime(CLOCK_MONOTONIC, &ts);
-        time_t now = ts.tv_sec;
+        time_t now = (time_t)get_monotonic_time(); // checked wrapper (raw clock_gettime left ts uninitialized on failure)
         time_t elapsed = now - app->last_failure_time;
 
         if(elapsed < delay)
@@ -427,7 +442,7 @@ void process_restart(int app_index)
             if(app->circuit_state == 1) // OPEN
             {
                 // Check if HALF_OPEN transition is allowed (wait 2x window)
-                if(now - app->window_start_time >= app->circuit_breaker_window * 2)
+                if(now - app->window_start_time >= (long)app->circuit_breaker_window * 2)
                 {
                     app->circuit_state = 2; // HALF_OPEN
                     app->failure_count = 0;
@@ -487,16 +502,15 @@ void process_restart(int app_index)
     {
         // Increment retry count on failure
         app->retry_count++;
-        struct timespec ts;
-        clock_gettime(CLOCK_MONOTONIC, &ts);
-        app->last_failure_time = ts.tv_sec;
+        time_t now = (time_t)get_monotonic_time(); // checked wrapper (raw clock_gettime left ts uninitialized on failure)
+        app->last_failure_time = now;
         LOGE("Failed to start process %s (retry %d/%d)", app->name, app->retry_count, app->max_retries);
-        
+
         // Circuit-breaker: record failure time and check cooldown
         if(app->circuit_breaker_threshold > 0)
         {
-            app->last_failure_time = ts.tv_sec;
-            
+            app->last_failure_time = now;
+
             // Check if circuit is OPEN (meaning we reached threshold)
             if(app->circuit_state == 1) // OPEN
             {
@@ -504,15 +518,15 @@ void process_restart(int app_index)
                 if(!app->in_cooldown)
                 {
                     app->in_cooldown = true;
-                    app->cooldown_start_time = ts.tv_sec;
+                    app->cooldown_start_time = now;
                     app->cooldown_count++;
-                    app->cooldown_end_time = ts.tv_sec + app->cooldown_period;
+                    app->cooldown_end_time = now + app->cooldown_period;
                     LOGN("Cooldown started for %s (count: %d, period: %ds)",
                          app->name, app->cooldown_count, app->cooldown_period);
                 }
-                
+
                 // Check if cooldown period expired
-                if(app->cooldown_period > 0 && ts.tv_sec >= app->cooldown_end_time)
+                if(app->cooldown_period > 0 && now >= app->cooldown_end_time)
                 {
                     app->in_cooldown = false;
                     app->cooldown_start_time = 0;
@@ -546,7 +560,7 @@ void process_restart(int app_index)
         // Use heartbeat module to update heartbeat time
         heartbeat_update_time(app_index);
         LOGI("Process %s restarted successfully", app->name);
-        
+
         // Reset circuit-breaker on success
         if(app->circuit_breaker_threshold > 0)
         {
@@ -557,4 +571,17 @@ void process_restart(int app_index)
             app->in_cooldown = false;
         }
     }
+}
+
+void process_resume(int app_index)
+{
+    Application_t *app = &apps_get_array()[app_index];
+
+    LOGN("Manual ack received for %s, resuming operations", app->name);
+    process_restart(app_index);
+
+    // Clear the anti-flap state so the app is eligible to run again.
+    app->in_cooldown = false;
+    app->cooldown_count = 0;
+    app->circuit_state = 0; // CLOSED
 }

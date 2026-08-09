@@ -46,7 +46,7 @@ net_command_t cmd_parse_network(const char *data, int length)
     {
         case 'p':
         {
-            char cnt;
+            int cnt;
             int n = parse_number(data, length, &cnt);
             LOGD("Heartbeat command received from pid %d : %s", n, data);
 
@@ -68,7 +68,7 @@ net_command_t cmd_parse_network(const char *data, int length)
         }
         break;
 
-        case 'a': // stArt : a<name> ? aBot (currently disabled)
+        case 'a': // stArt : a<name> e.g. aBot
         {
             LOGD("Start command received: %s", data);
             cmd.type = NET_CMD_START;
@@ -77,7 +77,7 @@ net_command_t cmd_parse_network(const char *data, int length)
         }
         break;
 
-        case 'o': // stOp : o<name> ? oBot (currently disabled)
+        case 'o': // stOp : o<name> e.g. oBot
         {
             LOGD("Stop command received: %s", data);
             cmd.type = NET_CMD_STOP;
@@ -86,7 +86,7 @@ net_command_t cmd_parse_network(const char *data, int length)
         }
         break;
 
-        case 'r': // Restart : r<name> ? rBot (currently disabled)
+        case 'r': // Restart : r<name> e.g. rBot
         {
             LOGD("Restart command received: %s", data);
             cmd.type = NET_CMD_RESTART;
@@ -95,10 +95,19 @@ net_command_t cmd_parse_network(const char *data, int length)
         }
         break;
 
-        case 's': // Status : s<name> ? sBot
+        case 's': // Status : s<name> e.g. sBot
         {
             LOGD("Status command received: %s", data);
             cmd.type = NET_CMD_STATUS;
+            strncpy(cmd.app_name, &data[1], MAX_APP_NAME_LENGTH - 1);
+            cmd.app_name[MAX_APP_NAME_LENGTH - 1] = '\0';
+        }
+        break;
+
+        case 'k': // resume (manual cooldown ack) : k<name> e.g. kBot
+        {
+            LOGD("Resume command received: %s", data);
+            cmd.type = NET_CMD_RESUME;
             strncpy(cmd.app_name, &data[1], MAX_APP_NAME_LENGTH - 1);
             cmd.app_name[MAX_APP_NAME_LENGTH - 1] = '\0';
         }

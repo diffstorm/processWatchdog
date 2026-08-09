@@ -6,18 +6,71 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - **UDP Status Command**: Get real-time status of processes via UDP
-  - New `s<app>` UDP command (e.g., `sBot` to check Bot status)
-  - JSON response with: app name, status, circuit state, cooldown remaining, failure count, ack requirement
+  - New `s<app>` UDP command (e.g., `sBot`); an empty or `*` name returns **all apps**
+  - JSON response with: app, status, circuit state, **pid, cpu, mem_kb**, cooldown remaining, failure count, ack requirement
   - Status values: `running`, `stopped`, `crashed`, `cooldown`, `circuit_open`
   - Circuit states: `closed`, `open`, `half_open`, `disabled` (if not configured)
   - `ack_required` field indicates if manual acknowledgment is needed before resuming
-  - Full integration with circuit-breaker and cooldown features
-  - Command available in help output (`-h` flag)
+- **Status client** (`-s [app]`, `-j` for raw JSON): query a running watchdog and print an
+  aligned table (or JSON), instead of hand-crafting UDP packets.
+- **Resume over UDP** (`k<app>`): clear cooldown / circuit-breaker state and restart — the
+  UDP equivalent of the `resume<app>` file command.
+- **Tests**: lean GTest unit/contract suite (parsing, backoff, status-JSON contract) and
+  `-t` integration checks (`config_parse`, `status_json`, `heartbeat_timeout`) run via
+  `-t all`; both wired into CI.
 
 ### Changed
-- Enabled control commands (`start<app>`, `stop<app>`, `restart<app>`, `s<app>`) via UDP
+- Enabled control commands (`start<app>`, `stop<app>`, `restart<app>`, `s<app>`, `k<app>`) via UDP
 - Server module now tracks sender address for UDP responses
-- Updated README.md with UDP status command documentation
+- `-t` now returns a pass/fail exit status (`-t all` gates CI); signal handlers log the
+  shutdown cause from the main loop, not from signal context
+- Updated README.md (quick-start, status client, testing model, UDP command reference)
+
+### Fixed
+- **Progress/stagnation detection was silently disabled**: `config_parse_file()`
+  unconditionally reset `progress_timeout` to 0 after parsing, discarding the value read
+  from the INI. Because the whole feature is gated on `progress_timeout > 0`, stagnation
+  detection never ran for any app despite being documented and shipped default-on. Removed
+  the stray reset (the initial `memset` still defaults omitting apps to 0). Added the
+  `progress_timeout_config` regression test.
+- **Silent permanent outage on UDP-poll failure**: the main loop exited with the default
+  `EXIT_NORMALLY`, which the supervisor script treats as a clean stop (no respawn). Now
+  exits with `EXIT_RESTART` so the watchdog is restarted. A signal-interrupted poll
+  (`EINTR`) is treated as "no data", not a failure.
+- **Remote out-of-bounds read in the UDP command parser**: `parse_number` had an unbounded
+  scan (ignored length / NUL), signed-`char` `isdigit` UB, and a `char` counter that could
+  index before the buffer. Now bounded and `unsigned char`-safe; malformed-datagram tests added.
+- **Undefined behaviour in restart backoff**: `base_delay * (1 << (retry_count - 1))` could
+  shift past the int width and overflow negative past the 1-hour cap (restart storm) for a
+  large `max_retries`. Inputs are now clamped.
+- **Divide-by-zero in first-heartbeat stats** guarded (potential `SIGFPE`).
+- **Async-signal-unsafe signal handlers**: handlers called `LOGN`/`exit()` (mutex + stdio),
+  which could self-deadlock at shutdown. Reduced to flag-setting via `sigaction`; the cause
+  is logged from the main loop and the forced-exit path uses `_exit`.
+- **Uninitialised reads** on failed `stat`, `sysinfo`, and `clock_gettime` return paths.
+- **Potential crash from `localtime`** returning `NULL` (bad `time_t`); replaced with
+  `localtime_r` + NULL guards in the timestamp, stats and daily-reboot paths.
+- **Config handler rejections were silently accepted**: `config_parse_file` only treated a
+  negative `ini_parse` result as failure, but a handler rejecting a bad value returns the
+  (positive) line number — so invalid app names, out-of-range integers and duplicate
+  sections booted anyway. Any non-zero result is now a failure.
+- **Integer overflow in `parse_number`**: a long digit run in a UDP datagram overflowed the
+  `int` accumulator (signed-overflow UB); it now clamps at `INT32_MAX` (rejected as an
+  invalid pid downstream).
+- **Two unchecked `clock_gettime` calls** in the restart/backoff path (uninitialised
+  `ts.tv_sec` on failure) now use the checked `get_monotonic_time()` wrapper.
+- **`sysconf(_SC_CLK_TCK)` used as a divisor** without checking for `<= 0` (garbage CPU% or
+  `SIGFPE`); now guarded.
+- **Socket fd leak** in `udp_start` on `setsockopt`/`bind` failure (missing `close`).
+- **`circuit_breaker_window * 2`** could overflow `int`; widened to `long`.
+- **Config validation**: reject an app section with no `cmd`, a duplicate `[app:X]`, and a
+  too-long `cmd` (now checked before it is stored truncated).
+
+### Removed
+- Unused, buggy helpers `substring` and `find_replace_text`.
+
+### Build
+- CI now cross-builds and publishes Linux binaries for `x86_64`, `aarch64` and `armv7`.
 
 ## [1.4.4] - 2026-08-08
 
